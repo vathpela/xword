@@ -244,9 +244,19 @@ class Puzzle:
                     snew += c
             return snew
 
+        self.pub = None
         self.title = massage(f.read_string())
+        import re
+        r = re.compile("(.*, [SMTWFabcdefghijklmnopqrstuvwxyz]+, [JFMASONDabcdefghijklmnopqrstuvwxyz]+ [0-9]+, [0-9]{4}) (.*)")
+        m = r.match(self.title)
+        g = m.groups()
+        if len(g) == 2:
+            self.pub = g[0]
+            self.title = g[1]
+
         self.author = massage(f.read_string())
         self.copyright = massage(f.read_string())
+        #print("pub: \"%s\"\ntitle: \"%s\"\nauthor: \"%s\"\ncopyright: \"%s\"" % (self.pub, self.title, self.author,self.copyright))
 
         self.clues = []
         clue = f.read_string()
@@ -429,12 +439,48 @@ class PrintFont:
             w += self.face.get_glyph_width(glyph) * 0.001 *self.font.get_size()
         return w
 
+class ClueRegion:
+    def __init__(self, top, bottom, left, right):
+        #print("ClueRegion(left=%d,top=%d,right=%d,bottom=%d)" % (left,top,right,bottom))
+        self._top = top
+        self._bottom = bottom
+        self._left = left
+        self._right = right
+
+        self.x = self.left
+        self.y = self.top
+
+    @property
+    def h(self):
+        return self.bottom - self.top
+
+    @property
+    def w(self):
+        return self.right - self.left
+
+    @property
+    def top(self):
+        return self._top
+
+    @property
+    def bottom(self):
+        return self._bottom
+
+    @property
+    def left(self):
+        return self._left
+
+    @property
+    def right(self):
+        return self._right
+
 class ClueArea:
-    def __init__(self, puzzle, font_size, col_height_fun):
-        self.puzzle = puzzle
+    def __init__(self, printer, font_size):
+        self.printer = printer
+        self.puzzle = printer.puzzle
 
         self.clue_font = PrintFont('Carlito', 'Regular', font_size)
-        self.label_font = PrintFont('Carlito', 'Bold', font_size)
+        self.label_font = PrintFont('Carlito', 'Bold', font_size*1.25)
         self.num_font = PrintFont('Carlito', 'Bold', font_size)
 
         spacer = 'This is the width of a column'
@@ -442,11 +488,16 @@ class ClueArea:
         self.num_width = self.num_font.measure_text('100. ')
         self.text_width = (self.col_width - self.num_width) * 0.9
 
-        self.col_height_fun = col_height_fun
+        left = self.printer.left
+        w,h = self.printer.min_puzzle_size
+        #print("h: %d h*1.05: %d" % (h,h*1.05))
+        top = self.printer.top - (h * 1.05) - self.clue_font.size
+        bottom = self.printer.bottom
+        right = left + self.col_width
         self.col_num = 0
+        self.clue_region = ClueRegion(top, bottom, left, right)
 
-        self.y = self.col_height_fun(0, self.col_width, self.clue_font.size)
-        self.x = self.num_width
+        #print("self.clue_region.x: %d self.clue_region.y: %d" % (self.clue_region.x, self.clue_region.y))
 
         self.items = []
         self.group_start = None
@@ -457,28 +508,32 @@ class ClueArea:
 
     def nextcol(self):
         self.col_num += 1
-        self.x += self.col_width
 
-        x = self.x - self.num_width
-        h = self.col_height_fun(x, x + self.col_width, self.clue_font.size)
-        self.y = h - self.clue_font.size
+        left = self.clue_region.left + self.col_width
+        right = left + self.col_width
+        top = self.clue_region.top
+        if left > self.printer.grid_right:
+            top = self.printer.banner_bottom - self.clue_font.size*2
+        bottom = self.clue_region.bottom
+
+        self.clue_region = ClueRegion(top, bottom, left, right)
 
     def open_group(self):
         self.group_start = self.items
-        if self.y < 0:
+        if self.clue_region.y < self.clue_region.bottom:
             self.nextcol()
 
     def close_group(self):
-        if self.y < 0:
+        if self.clue_region.y < 0:
             self.items = self.group_start
             return False
         else:
             return True
 
-    def draw(self, gpc, x0, y0):
+    def draw(self, gpc):
         for (x, y, font, text) in self.items:
             gpc.setfont(font.font)
-            gpc.moveto(x + x0, y + y0)
+            gpc.moveto(x, y)
             gpc.show(text)
 
     def add_wrapped_text(self, width, font, text):
@@ -511,84 +566,282 @@ class ClueArea:
 
         for line in lines:
             s = ' '.join(line)
-            self.add_item(self.x, self.y, font, s)
-            self.y -= font.size
+            self.add_item(self.clue_region.x+self.num_width, self.clue_region.y, font, s)
+            self.clue_region.y -= font.size
 
     def add_space(self, pct):
-        self.y -= self.clue_font.size * pct
+        self.clue_region.y -= self.clue_font.size * pct
 
     def add_label(self, label):
-        start = self.x
-        stop = self.x + self.text_width
+        start = self.clue_region.x
+        stop = self.clue_region.x + self.text_width
         w = self.label_font.measure_text(label)
         x0 = start + (stop - start - w)/2
 
-        self.add_item(x0, self.y, self.label_font, label)
-        self.y -= self.label_font.size
+        #print("top: %d banner_top: %d banner_h: %d banner_bottom: %d grid_top: %d grid_h: %d grid_bottom: %d" % (self.printer.top, self.printer.banner_top, self.printer.banner_h, self.printer.banner_bottom, self.printer.grid_top, self.printer.grid_h, self.printer.grid_bottom))
+        #print("adding label \"%s\" at (%d,%d)" % (label, x0, self.clue_region.y))
+        self.add_item(x0, self.clue_region.y, self.label_font, label)
+        self.clue_region.y -= self.label_font.size
 
     def add_column(self, name, mode):
         first = True
-        for n in range(1, self.puzzle.max_number+1):
+        last = self.puzzle.max_number+1
+        for n in range(1, last):
             m = self.puzzle.mode_clues[mode]
             if m.has_key(n):
                 clue = m[n]
                 num = '%d. ' % n
-                nw = self.num_font.measure_text(num)
 
                 while True:
                     self.open_group()
                     if first:
                         self.add_label(name)
-                        self.add_space(1.0)
+                        self.add_space(0.5)
 
-                    self.add_item(self.x - nw, self.y, self.num_font, num)
+                    #print("adding num %s at (%d,%d)" % (num, self.clue_region.x, self.clue_region.y))
+                    self.add_item(self.clue_region.x, self.clue_region.y, self.num_font, num)
                     self.add_wrapped_text(self.text_width,self.clue_font, clue)
 
                     if self.close_group():
                         break
 
-                self.add_space(0.5)
+                if n != last:
+                    self.add_space(0.5)
                 if first:
                     first = False
 
     def setup(self):
         self.add_column('Across', ACROSS)
-        self.add_space(1.0)
+        self.add_space(0.5)
         self.add_column('Down', DOWN)
 
     def width(self):
         return (self.col_num + 1) * self.col_width
 
 class PuzzlePrinter:
-    def __init__(self, puzzle):
+    def __init__(self, puzzle, job=None):
         self.puzzle = puzzle
+        self.job = gnomeprint.Job(gnomeprint.config_default())
+        if job:
+            self.job = job
 
-    def draw_banner(self, r):
-        (left, bottom, right, top) = r
+        config = self.job.get_config()
+        w = self.units(config.get(gnomeprint.KEY_PAPER_WIDTH))
+        h = self.units(config.get(gnomeprint.KEY_PAPER_HEIGHT))
+        if config.get(gnomeprint.KEY_PAGE_ORIENTATION) == 'R90':
+            print("landscape...")
+            (w,h) = (h,w)
 
-        h = top - bottom
-        size = int(h * 0.6)
+        left = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_LEFT))
+        left2cm = self.units("1.25 cm")
+        if left < left2cm:
+            left = left2cm
+
+        top = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_TOP))
+        print("KEY_PAGE_MARGIN_TOP: %d" % (top))
+        top3cm = self.units("45mm")
+        print("top3cm: %d" % (top3cm))
+        if top < top3cm:
+            top = top3cm
+
+        right = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_RIGHT))
+        right2cm = self.units("1.25 cm")
+        if right < right2cm:
+            right = right2cm
+
+        bottom = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_BOTTOM))
+        bottom1cm = self.units("1.5 cm")
+        if bottom < bottom1cm:
+            bottom = bottom1cm
+
+        # but actually gnomeprint is giving us crap
+        # lmrtbhw: 56 392 538 756 28 841 595 <-- us letter
+        left = left2cm
+        right = right2cm
+        #top = top3cm
+        bottom = bottom1cm
+
+        if config.get(gnomeprint.KEY_PAGE_ORIENTATION) == 'R90':
+            (left, bottom, right, top) = (bottom, left, top, right)
+
+        self._top = h - top
+        self._bottom = bottom
+        self._left = left
+        self._right = w - right
+
+        self._w = w
+        self._h = h
+
+        print("left: %d top: %d" % (self.left,self.top))
+
+        self.num_font = PrintFont('Carlito', 'Regular', self.box_size * 0.3)
+        self.let_font = PrintFont('Carlito', 'Regular', self.box_size * 0.6)
+
+    @property
+    def top(self):
+        if self.h > self.w:
+            return self._top
+        else:
+            return self._left
+
+    @property
+    def bottom(self):
+        if self.h > self.w:
+            return self._bottom
+        else:
+            return self._right
+
+    @property
+    def left(self):
+        if self.h > self.w:
+            return self._left
+        else:
+            return self._top
+
+    @property
+    def right(self):
+        if self.h > self.w:
+            return self._right
+        else:
+            return self._bottom
+
+    @property
+    def mid(self):
+        return (self.top + self.bottom) / 2
+
+    @property
+    def h(self):
+        return self._h
+
+    @property
+    def w(self):
+        return self._w
+
+    # now the same for the banner...
+    @property
+    def banner_h(self):
+        #return (self.top - self.bottom) * 0.06
+        return self.banner_font_size * 2 + 2
+
+    @property
+    def banner_font_size(self):
+        return 9
+
+    @property
+    def banner_w(self):
+        #print("self.h: %d self.w: %d" % (self.h, self.w))
+        if self.h > self.w:
+            return self.right - self.left
+        else:
+            return self.mid - self.left
+
+    @property
+    def banner_top(self):
+        return self.top
+
+    @property
+    def banner_left(self):
+        return self.left
+
+    @property
+    def banner_right(self):
+        return self.banner_left + self.banner_w
+
+    @property
+    def banner_bottom(self):
+        return self.top - self.banner_h
+
+    @property
+    def box_h(self):
+        if self.h > self.w:
+            h = self.top - self.mid - self.banner_h
+        else:
+            h = self.top - self.bottom - self.banner_h
+        return h / float(self.puzzle.height)
+
+    @property
+    def box_w(self):
+        if self.h > self.w:
+            return (self._right - self._left) / float(self.puzzle.width)
+        else:
+            return (self.mid - self._left)/float(self.puzzle.width)
+
+    @property
+    def box_size(self):
+        return int(min(self.box_w, self.box_h))
+
+    @property
+    def grid_top(self):
+        return self.banner_bottom # - self.box_size
+
+    @property
+    def grid_bottom(self):
+        w,h = self.min_puzzle_size
+        bottom = self.banner_bottom - (self.puzzle.height)*self.box_size
+        #print("bottom: %d self.grid_top-h: %d" % (bottom, self.grid_top-h))
+        if bottom > self.grid_top - h:
+            return self.grid_top - h
+        return bottom
+
+    @property
+    def grid_left(self):
+        return self._left
+
+    @property
+    def grid_right(self):
+        w,h = self.min_puzzle_size
+        right = self.left + (self.puzzle.width)*self.box_size
+        #print("right: %d self.grid_left+w: %d" % (right, self.grid_left+w))
+        if right < self.grid_left + w:
+            return self.grid_left + w
+        return right
+
+    @property
+    def grid_h(self):
+        return self.grid_top - self.grid_bottom
+
+    @property
+    def grid_w(self):
+        return self.grid_right - self.grid_left
+
+    def draw_banner(self):
+        h = self.banner_h
+        size = self.banner_font_size
         font = PrintFont('Carlito', 'Regular', size)
+        bold = PrintFont('Carlito', 'Bold', size)
 
-        self.gpc.setfont(font.font)
-        w0 = font.measure_text(self.puzzle.title)
-        w1 = font.measure_text(self.puzzle.author)
-        width = w0
-        if w1 > w0:
-            width = w1
-        #x0 = left + (right - left - width)/2
-        x0 = left + (right - left - width)/4
-        y0 = top - size
+        # top line first... 
+        wtitle = bold.measure_text(self.puzzle.title)
+        y0 = self.banner_top - h/2
+        x0 = self.banner_right - wtitle
+
+        self.gpc.setfont(bold.font)
         self.gpc.moveto(x0, y0)
-        self.gpc.show(self.puzzle.author)
-        self.gpc.moveto(x0, y0 + size)
         self.gpc.show(self.puzzle.title)
 
-    def draw_box(self, x, y, r):
-        (left, bottom, right, top) = r
+        self.gpc.setfont(font.font)
+        if self.puzzle.pub:
+            self.gpc.moveto(self.grid_left, y0)
+            self.gpc.show(self.puzzle.pub)
+
+        wauthor = font.measure_text(self.puzzle.author)
+        x0 = self.banner_right - wauthor
+        y0 = self.banner_top - h
+        self.gpc.moveto(x0, y0)
+        self.gpc.show(self.puzzle.author)
+
+    def draw_box(self, x, y):
+        left = self.grid_left + x*self.box_size
+        bottom = self.grid_top - (y+1)*self.box_size
+        right = self.grid_left + (x+1)*self.box_size
+        top = self.grid_top - y*self.box_size
+
+        #if (left == self.left and top >= self.grid_top) or (right >= self.grid_right and bottom <= self.grid_bottom):
+        #    print("box(left=%d,top=%d,right=%d,bottom=%d)" % (left,top,right,bottom))
+
         gpc = self.gpc
 
-        gpc.rect_stroked(left, bottom, (right-left), (top-bottom))
+        #gpc.rect_stroked(left, bottom, (right-left), (top-bottom))
         if self.puzzle.is_black(x, y):
             gpc.rect_filled(left, bottom, (right-left), (top-bottom))
 
@@ -610,63 +863,45 @@ class PuzzlePrinter:
             gpc.lineto(right, top - self.box_size*0.3)
             gpc.fill()
 
-    def min_puzzle_size(self, r):
-        puzzle = self.puzzle
-        (left, bottom, right, top) = r
+    @property
+    def min_puzzle_size(self):
+        w = self.box_size * self.puzzle.width
+        h = self.box_size * self.puzzle.height
+        return (w, h + self.banner_h)
 
-        self.banner_size = 18
+    @property
+    def banner_height(self):
+        if self.h > self.w:
+            return (self._top - self._bottom) * 0.6
+        else:
+            return (self._right -self._left) / 2
 
-        bw = (right - left)/float(puzzle.width)
-        bh = (top - bottom - self.banner_size)/float(puzzle.height)
-        box_size = int(min(bw, bh))
-        self.box_size = box_size
-
-        w = box_size * puzzle.width
-        h = box_size * puzzle.height
-        return (w, h + self.banner_size)
-
-    def draw_puzzle(self, r):
+    def draw_grid(self):
         puzzle = self.puzzle
         box_size = self.box_size
-        (left, bottom, right, top) = r
+        self.draw_banner()
 
-        w = box_size * puzzle.width
-        h = box_size * puzzle.height
+        #left = self.left + ((self.right - self.left) - self.w)/2
+        #top = self.top - self.banner_h
 
-        banner_box = (left, top - self.banner_size, right, top)
-        self.draw_banner(banner_box)
-
-        left += ((right - left) - w)/2
-        top -= self.banner_size
-
-        self.num_font = PrintFont('Carlito', 'Regular', box_size * 0.3)
-        self.let_font = PrintFont('Carlito', 'Regular', box_size * 0.6)
+        #print("grid_top: %d grid_left: %d" % (self.grid_top, self.grid_left))
 
         for y in range(puzzle.height):
             for x in range(puzzle.width):
-                r = (left + x*box_size,
-                     top - (y+1)*box_size,
-                     left + (x+1)*box_size,
-                     top - y*box_size)
-                self.draw_box(x, y, r)
+                self.draw_box(x, y)
 
-    def draw_clues(self, r, coltop):
-        (left, bottom, right, top) = r
+    def draw_clues(self):
+        maxw = self.right - self.left
 
-        maxw = right - left
-
-        def coltoprel(x0, x1, clue_font_size):
-            return coltop(x0 + left, x1 + left, clue_font_size) - bottom
-
-        size = 15
+        size = 15.0
         while True:
-            area = ClueArea(self.puzzle, size, coltoprel)
+            area = ClueArea(self, size)
             w = area.width()
             if w <= maxw:
                 break
-            size -= 0.2
+            size -= 0.1
 
-        area.draw(self.gpc, left, bottom)
+        area.draw(self.gpc)
         return area.col_width
 
     def units(self, length):
@@ -686,56 +921,19 @@ class PuzzlePrinter:
         return float(num) * u.unittobase
 
     def draw(self, config):
-        w = self.units(config.get(gnomeprint.KEY_PAPER_WIDTH))
-        h = self.units(config.get(gnomeprint.KEY_PAPER_HEIGHT))
-
-        left = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_LEFT))
-        top = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_TOP))
-        right = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_RIGHT))
-        bottom = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_BOTTOM))
-        if config.get(gnomeprint.KEY_PAGE_ORIENTATION) == 'R90':
-            (w, h) = (h, w)
-            (left, bottom, right, top) = (bottom, left, top, right)
-
-        print("KEY_PAGE_MARGIN_BOTTOM: %d\n", (config.get(gnomeprint.KEY_PAGE_MARGIN_TOP), config.get(gnomeprint.KEY_PAGE_MARGIN_BOTTOM), config.get(gnomeprint.KEY_PAGE_MARGIN_LEFT), config.get(gnomeprint.KEY_PAGE_MARGIN_RIGHT)))
-        bottom = self.units("1 cm")
-        left= self.units("2 cm")
-        right = self.units("2 cm")
-        top = self.units("3 cm")
-        print("bottom: %d\n", (top, bottom, left, right))
-
-        right = w - right
-        top = h - top
-        banner_size = 14
-
         self.gpc.beginpage("1")
 
-        #self.gpc.rect_stroked(left, bottom, right-left, top-bottom)
+        #if config.get(gnomeprint.KEY_PAGE_ORIENTATION) == 'R90':
+        #    print("lrtmbhw: %d %d %d %d %d %d %d" % (self.left, self.right, self.top, self.mid, self.bottom, self.h, self.w))
+        #    #print("lmrtbhw: %d %d %d %d %d %d %d" % (self.left, self.mid, self.right, self.top, self.bottom, self.h, self.w))
+        #else:
+        #    print("lrtmbhw: %d %d %d %d %d %d %d" % (self.left, self.right, self.top, self.mid, self.bottom, self.h, self.w))
 
-        if h > w:
-            mid = (top + bottom) / 2
-            r = (left, mid, right, top)
-        else:
-            mid = (left + right)/2
-            r = (left, bottom, mid, top)
+        self.gpc.rect_stroked(self.left, self.bottom, self.right-self.left, self.top-self.bottom)
+        #print("grid_bottom: %d grid_right: %d" % (self.grid_bottom, self.grid_right))
 
-        (w, h) = self.min_puzzle_size(r)
-        h += 0.05 * h
-
-        def coltop(x0, x1, clue_font_size):
-            if ((x0 >= left and x0 <= left+w) or (x1 >= left and x1 <= left+w)
-                or (x0 <= left and x1 >= left+w)):
-                return top - h - clue_font_size
-            else:
-                return (bottom - clue_font_size) + (h - clue_font_size) - clue_font_size
-
-        fullr = (left, bottom, right, top)
-        col_width = self.draw_clues(fullr, coltop)
-
-        w = int((w+col_width-1)/col_width) * col_width
-        r = (r[0], r[1], left+w, r[3])
-        self.draw_puzzle(r)
-
+        col_width = self.draw_clues()
+        self.draw_grid()
         self.gpc.showpage()
 
     def do_preview(self, config, dialog):
@@ -755,8 +953,10 @@ class PuzzlePrinter:
         if res == gnomeprint.ui.DIALOG_RESPONSE_CANCEL:
             dialog.destroy()
         elif res == gnomeprint.ui.DIALOG_RESPONSE_PREVIEW:
+            #self.__init__(self.puzzle, job)
             self.do_preview(config, dialog)
         elif res == gnomeprint.ui.DIALOG_RESPONSE_PRINT:
+            #self.__init__(self.puzzle, job)
             dialog.destroy()
             self.gpc = job.get_context()
             self.draw(config)
@@ -764,9 +964,8 @@ class PuzzlePrinter:
             job.print_()
 
     def print_puzzle(self, win):
-        job = gnomeprint.Job(gnomeprint.config_default())
-        dialog = gnomeprint.ui.Dialog(job, "Print...", 0)
-        dialog.connect('response', self.do_print, job)
+        dialog = gnomeprint.ui.Dialog(self.job, "Print...", 0)
+        dialog.connect('response', self.do_print, self.job)
         dialog.set_transient_for(win)
         dialog.show()
 
@@ -822,14 +1021,14 @@ class PuzzleWidget:
 
     def expose_event(self, area, event):
         if self.puzzle:
-            self.draw_puzzle()
+            self.draw_grid()
         else:
             self.draw_empty()
 
     def draw_empty(self):
         pass
 
-    def draw_puzzle(self):
+    def draw_grid(self):
         view = self.area.window
         cm = view.get_colormap()
         self.white = cm.alloc_color('white')
