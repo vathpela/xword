@@ -212,6 +212,10 @@ class Puzzle:
     def __init__(self, filename):
         self.load_file(filename)
 
+    @property
+    def left_grid(self):
+        return False
+
     def load_file(self, filename):
         f = BinaryFile(filename)
         self.f = f
@@ -488,12 +492,20 @@ class ClueArea:
         self.num_width = self.num_font.measure_text('100. ')
         self.text_width = (self.col_width - self.num_width) * 0.9
 
-        left = self.printer.left
-        w,h = self.printer.min_puzzle_size
+        (w,h) = self.printer.min_puzzle_size
         #print("h: %d h*1.05: %d" % (h,h*1.05))
-        top = self.printer.top - (h * 1.05) - self.clue_font.size
         bottom = self.printer.bottom
-        right = left + self.col_width
+        if self.puzzle.left_grid:
+            top = self.printer.top - (h * 1.05) - self.clue_font.size
+            left = self.printer.left
+            right = left + self.col_width
+        else:
+            left = self.printer.left
+            right = left + self.col_width
+            top = self.printer.top - (h * 1.05) - self.clue_font.size
+            if right <= self.printer.grid_left:
+                top = self.printer.banner_bottom - self.clue_font.size * 2
+
         self.col_num = 0
         self.clue_region = ClueRegion(top, bottom, left, right)
 
@@ -509,12 +521,17 @@ class ClueArea:
     def nextcol(self):
         self.col_num += 1
 
+        (w,h) = self.printer.min_puzzle_size
+        bottom = self.clue_region.bottom
         left = self.clue_region.left + self.col_width
         right = left + self.col_width
-        top = self.clue_region.top
-        if left > self.printer.grid_right:
-            top = self.printer.banner_bottom - self.clue_font.size*2
-        bottom = self.clue_region.bottom
+        top = self.printer.top - (h * 1.05) - self.clue_font.size
+        if self.puzzle.left_grid:
+            if left >= self.printer.grid_right:
+                top = self.printer.banner_bottom - self.clue_font.size * 2
+        else:
+            if right <= self.printer.grid_left:
+                top = self.printer.banner_bottom - self.clue_font.size * 2
 
         self.clue_region = ClueRegion(top, bottom, left, right)
 
@@ -536,7 +553,7 @@ class ClueArea:
             gpc.moveto(x, y)
             gpc.show(text)
 
-    def add_wrapped_text(self, width, font, text):
+    def add_wrapped_text(self, width, font, text, prefix):
         words = text.split(' ')
         lines = []
         while len(words) > 0:
@@ -564,6 +581,12 @@ class ClueArea:
                 words = [line.pop()] + words
             lines.append(line)
 
+        if self.clue_region.y - len(lines) * font.size < self.clue_region.bottom:
+            self.close_group()
+            self.nextcol()
+            self.open_group()
+
+        self.add_item(self.clue_region.x, self.clue_region.y, prefix[0], prefix[1])
         for line in lines:
             s = ' '.join(line)
             self.add_item(self.clue_region.x+self.num_width, self.clue_region.y, font, s)
@@ -597,18 +620,16 @@ class ClueArea:
                     if first:
                         self.add_label(name)
                         self.add_space(0.5)
+                        first = False
 
                     #print("adding num %s at (%d,%d)" % (num, self.clue_region.x, self.clue_region.y))
-                    self.add_item(self.clue_region.x, self.clue_region.y, self.num_font, num)
-                    self.add_wrapped_text(self.text_width,self.clue_font, clue)
+                    self.add_wrapped_text(self.text_width,self.clue_font, clue, (self.num_font, num))
 
                     if self.close_group():
                         break
 
                 if n != last:
                     self.add_space(0.5)
-                if first:
-                    first = False
 
     def setup(self):
         self.add_column('Across', ACROSS)
@@ -638,9 +659,9 @@ class PuzzlePrinter:
             left = left2cm
 
         top = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_TOP))
-        print("KEY_PAGE_MARGIN_TOP: %d" % (top))
+        #print("KEY_PAGE_MARGIN_TOP: %d" % (top))
         top3cm = self.units("45mm")
-        print("top3cm: %d" % (top3cm))
+        #print("top3cm: %d" % (top3cm))
         if top < top3cm:
             top = top3cm
 
@@ -671,8 +692,6 @@ class PuzzlePrinter:
 
         self._w = w
         self._h = h
-
-        print("left: %d top: %d" % (self.left,self.top))
 
         self.num_font = PrintFont('Carlito', 'Regular', self.box_size * 0.3)
         self.let_font = PrintFont('Carlito', 'Regular', self.box_size * 0.6)
@@ -740,16 +759,28 @@ class PuzzlePrinter:
         return self.top
 
     @property
-    def banner_left(self):
+    def banner_natural_left(self):
         return self.left
 
     @property
-    def banner_right(self):
+    def banner_natural_right(self):
         return self.banner_left + self.banner_w
 
     @property
     def banner_bottom(self):
-        return self.top - self.banner_h
+        return self.top - self.banner_h*1.5
+
+    @property
+    def banner_left(self):
+        if self.puzzle.left_grid:
+            return self.grid_left
+        return self.banner_natural_left
+
+    @property
+    def banner_right(self):
+        if self.puzzle.left_grid:
+            return self.banner_natural_right
+        return self.grid_right
 
     @property
     def box_h(self):
@@ -776,7 +807,7 @@ class PuzzlePrinter:
 
     @property
     def grid_bottom(self):
-        w,h = self.min_puzzle_size
+        (w,h) = self.min_puzzle_size
         bottom = self.banner_bottom - (self.puzzle.height)*self.box_size
         #print("bottom: %d self.grid_top-h: %d" % (bottom, self.grid_top-h))
         if bottom > self.grid_top - h:
@@ -785,16 +816,26 @@ class PuzzlePrinter:
 
     @property
     def grid_left(self):
-        return self._left
+        if self.puzzle.left_grid:
+            return self.left
+        else:
+            (w,h) = self.min_puzzle_size
+            left = self.right - (self.puzzle.width+1)*self.box_size
+            if left > self.grid_right - w:
+                return self.grid_right - w
+            return left
 
     @property
     def grid_right(self):
-        w,h = self.min_puzzle_size
-        right = self.left + (self.puzzle.width)*self.box_size
-        #print("right: %d self.grid_left+w: %d" % (right, self.grid_left+w))
-        if right < self.grid_left + w:
-            return self.grid_left + w
-        return right
+        if self.puzzle.left_grid:
+            (w,h) = self.min_puzzle_size
+            right = self.left + (self.puzzle.width)*self.box_size
+            #print("right: %d self.grid_left+w: %d" % (right, self.grid_left+w))
+            if right < self.grid_left + w:
+                return self.grid_left + w
+            return right
+        else:
+            return self.right
 
     @property
     def grid_h(self):
@@ -812,7 +853,7 @@ class PuzzlePrinter:
 
         # top line first... 
         wtitle = bold.measure_text(self.puzzle.title)
-        y0 = self.banner_top - h/2
+        y0 = self.banner_top - h/2 + 1
         x0 = self.banner_right - wtitle
 
         self.gpc.setfont(bold.font)
@@ -821,27 +862,28 @@ class PuzzlePrinter:
 
         self.gpc.setfont(font.font)
         if self.puzzle.pub:
-            self.gpc.moveto(self.grid_left, y0)
+            self.gpc.moveto(self.banner_left, y0)
             self.gpc.show(self.puzzle.pub)
 
         wauthor = font.measure_text(self.puzzle.author)
         x0 = self.banner_right - wauthor
-        y0 = self.banner_top - h
+        y0 = self.banner_top - h + 1
         self.gpc.moveto(x0, y0)
         self.gpc.show(self.puzzle.author)
 
     def draw_box(self, x, y):
-        left = self.grid_left + x*self.box_size
         bottom = self.grid_top - (y+1)*self.box_size
-        right = self.grid_left + (x+1)*self.box_size
         top = self.grid_top - y*self.box_size
-
-        #if (left == self.left and top >= self.grid_top) or (right >= self.grid_right and bottom <= self.grid_bottom):
-        #    print("box(left=%d,top=%d,right=%d,bottom=%d)" % (left,top,right,bottom))
+        if self.puzzle.left_grid:
+            left = self.grid_left + (x+0.5)*self.box_size
+            right = self.grid_left + (x+1.5)*self.box_size
+        else:
+            left = self.grid_left + (x+0.5)*self.box_size
+            right = self.grid_left + (x+1.5)*self.box_size
 
         gpc = self.gpc
 
-        #gpc.rect_stroked(left, bottom, (right-left), (top-bottom))
+        gpc.rect_stroked(left, bottom, (right-left), (top-bottom))
         if self.puzzle.is_black(x, y):
             gpc.rect_filled(left, bottom, (right-left), (top-bottom))
 
@@ -878,7 +920,6 @@ class PuzzlePrinter:
 
     def draw_grid(self):
         puzzle = self.puzzle
-        box_size = self.box_size
         self.draw_banner()
 
         #left = self.left + ((self.right - self.left) - self.w)/2
@@ -929,7 +970,7 @@ class PuzzlePrinter:
         #else:
         #    print("lrtmbhw: %d %d %d %d %d %d %d" % (self.left, self.right, self.top, self.mid, self.bottom, self.h, self.w))
 
-        self.gpc.rect_stroked(self.left, self.bottom, self.right-self.left, self.top-self.bottom)
+        #self.gpc.rect_stroked(self.left, self.bottom, self.right-self.left, self.top-self.bottom)
         #print("grid_bottom: %d grid_right: %d" % (self.grid_bottom, self.grid_right))
 
         col_width = self.draw_clues()
