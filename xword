@@ -533,7 +533,7 @@ class ClueArea:
             if m.has_key(n):
                 clue = m[n]
                 num = '%d. ' % n
-                nw = self.clue_font.measure_text(num)
+                nw = self.num_font.measure_text(num)
 
                 while True:
                     self.open_group()
