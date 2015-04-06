@@ -404,12 +404,13 @@ class ClueArea:
     def __init__(self, puzzle, font_size, col_height_fun):
         self.puzzle = puzzle
 
-        self.clue_font = PrintFont('Serif', 'Regular', font_size)
-        self.label_font = PrintFont('Serif', 'Bold', font_size)
+        self.clue_font = PrintFont('Carlito', 'Regular', font_size)
+        self.label_font = PrintFont('Carlito', 'Bold', font_size)
+        self.num_font = PrintFont('Carlito', 'Bold', font_size)
 
         spacer = 'This is the width of a column'
         self.col_width = self.clue_font.measure_text(spacer)
-        self.num_width = self.clue_font.measure_text('100. ')
+        self.num_width = self.num_font.measure_text('100. ')
         self.text_width = (self.col_width - self.num_width) * 0.9
 
         self.col_height_fun = col_height_fun
@@ -508,8 +509,8 @@ class ClueArea:
                     if first:
                         self.add_label(name)
                         self.add_space(1.0)
-                        
-                    self.add_item(self.x - nw, self.y, self.clue_font, num)
+
+                    self.add_item(self.x - nw, self.y, self.num_font, num)
                     self.add_wrapped_text(self.text_width,self.clue_font, clue)
 
                     if self.close_group(): break
@@ -534,7 +535,7 @@ class PuzzlePrinter:
 
         h = top - bottom
         size = int(h * 0.6)
-        font = PrintFont('Serif', 'Regular', size)
+        font = PrintFont('Carlito', 'Regular', size)
 
         self.gpc.setfont(font.font)
         w0 = font.measure_text(self.puzzle.title)
@@ -605,8 +606,8 @@ class PuzzlePrinter:
         left += ((right - left) - w)/2
         top -= self.banner_size
 
-        self.num_font = PrintFont('Sans', 'Regular', box_size * 0.3)
-        self.let_font = PrintFont('Sans', 'Regular', box_size * 0.6)
+        self.num_font = PrintFont('Carlito', 'Regular', box_size * 0.3)
+        self.let_font = PrintFont('Carlito', 'Regular', box_size * 0.6)
 
         for y in range(puzzle.height):
             for x in range(puzzle.width):
@@ -624,12 +625,13 @@ class PuzzlePrinter:
         def coltoprel(x0, x1, clue_font_size):
             return coltop(x0 + left, x1 + left, clue_font_size) - bottom
 
-        size = 12
+        size = 15
         while True:
             area = ClueArea(self.puzzle, size, coltoprel)
             w = area.width()
-            if w <= maxw: break
-            size -= 1
+            if w <= maxw:
+                break
+            size -= 0.2
 
         area.draw(self.gpc, left, bottom)
         return area.col_width
@@ -801,8 +803,8 @@ class PuzzleWidget:
 
         num_size = int(self.box_size * 0.25)
         let_size = int(self.box_size * 0.45)
-        self.num_font = pango.FontDescription('Sans %d' % num_size)
-        self.let_font = pango.FontDescription('Sans %d' % let_size)
+        self.num_font = pango.FontDescription('Carlito %d' % num_size)
+        self.let_font = pango.FontDescription('Carlito %d' % let_size)
 
         self.gc = view.new_gc(foreground = self.white, background = self.white)
         view.draw_rectangle(self.gc, True, self.x, self.y,
@@ -924,7 +926,7 @@ class ClueWidget:
         
         size = 14
         while True:
-            font = pango.FontDescription('Sans %d' % size)
+            font = pango.FontDescription('Carlito %d' % size)
             self.pango.set_font_description(font)
             self.pango.set_text(self.control.get_selected_word())
             w, h = self.pango.get_pixel_size()
