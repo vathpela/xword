@@ -120,7 +120,8 @@ class BinaryFile:
         return ord(self.read_char())
 
     def read_string(self):
-        if self.index == len(self.data): return ''
+        if self.index == len(self.data):
+            return ''
         s = ''
         c = self.read_char()
         while ord(c) is not 0 and self.index < len(self.data):
@@ -148,8 +149,10 @@ class PersistentPuzzle:
         width = 0
         height = 0
         for (x, y) in m.keys():
-            if x > width: width = x
-            if y > height: height = y
+            if x > width:
+                width = x
+            if y > height:
+                height = y
         width += 1
         height += 1
 
@@ -163,7 +166,8 @@ class PersistentPuzzle:
         for ((x, y), r) in self.responses.items():
             index = y * width + x
             bin1[index] = self.responses[x, y]
-            if bin1[index] == '': bin1[index] = chr(0)
+            if bin1[index] == '':
+                bin1[index] = chr(0)
 
         for ((x, y), r) in self.errors.items():
             index = y * width + x
@@ -174,7 +178,8 @@ class PersistentPuzzle:
 
     def get_int(self, s, pos):
         pos0 = pos
-        while pos < len(s) and s[pos].isdigit(): pos += 1
+        while pos < len(s) and s[pos].isdigit():
+            pos += 1
         return (int(s[pos0:pos]), pos)
 
     def from_binary(self, bin):
@@ -196,8 +201,10 @@ class PersistentPuzzle:
         i = 0
         for y in range(height):
             for x in range(width):
-                if bin1[i] == chr(0): self.responses[x, y] = ''
-                else: self.responses[x, y] = bin1[i]
+                if bin1[i] == chr(0):
+                    self.responses[x, y] = ''
+                else:
+                    self.responses[x, y] = bin1[i]
                 self.errors[x, y] = ord(bin2[i])
                 i += 1
 
@@ -225,14 +232,16 @@ class Puzzle:
         for y in range(self.height):
             for x in range(self.width):
                 c = f.read_char()
-                if c == '-': c = ''
+                if c == '-':
+                    c = ''
                 self.responses[x, y] = c
 
         def massage(s):
             # skips unprintable characters
             snew = ''
             for c in s:
-                if ord(c) >= ord(' ') and ord(c) <= ord('~'): snew += c
+                if ord(c) >= ord(' ') and ord(c) <= ord('~'):
+                    snew += c
             return snew
 
         self.title = massage(f.read_string())
@@ -273,15 +282,16 @@ class Puzzle:
                             self.across_clues[number] = ''
                         else:
                             self.across_clues[number] = self.clues.pop(0)
-                    else: self.across_map[x, y] = self.across_map[x-1, y]
-                    
+                    else:
+                        self.across_map[x, y] = self.across_map[x-1, y]
                     if is_fresh_y:
                         self.down_map[x, y] = number
                         if self.is_black(x, y+1): # see April 30, 2006 puzzle
                             self.down_clues[number] = ''
                         else:
                             self.down_clues[number] = self.clues.pop(0)
-                    else: self.down_map[x, y] = self.down_map[x, y-1]
+                    else:
+                        self.down_map[x, y] = self.down_map[x, y-1]
 
                     if is_fresh_x or is_fresh_y:
                         self.is_across[number] = is_fresh_x
@@ -300,8 +310,10 @@ class Puzzle:
         data = [' ']*width*height
         for ((x, y), r) in self.responses.items():
             index = y * width + x
-            if r == '.': data[index] = '1'
-            else: data[index] = '0'
+            if r == '.':
+                data[index] = '1'
+            else:
+                data[index] = '0'
 
         s1 = ''.join(data)
         s2 = ';'.join(self.all_clues)
@@ -316,7 +328,8 @@ class Puzzle:
         for y in range(self.height):
             for x in range(self.width):
                 c = self.responses[x, y]
-                if c == '': c = '-'
+                if c == '':
+                    c = '-'
                 f.write_char(c)
         f.save(fname)
 
@@ -324,8 +337,10 @@ class Puzzle:
         return self.responses.get((x, y), '.') == '.'
 
     def clue(self, x, y, mode):
-        if mode is ACROSS: return self.across_clues[self.across_map[x, y]]
-        if mode is DOWN: return self.down_clues[self.down_map[x, y]]
+        if mode is ACROSS:
+            return self.across_clues[self.across_map[x, y]]
+        if mode is DOWN:
+            return self.down_clues[self.down_map[x, y]]
 
     def number(self, x, y, mode):
         return self.mode_maps[mode][x, y]
@@ -334,30 +349,39 @@ class Puzzle:
         (xo, yo) = (x, y)
         while True:
             if mode is ACROSS:
-                if x+incr < 0 or x+incr >= self.width: return ((x, y), True)
+                if x+incr < 0 or x+incr >= self.width:
+                    return ((x, y), True)
                 x += incr
             else:
-                if y+incr < 0 or y+incr >= self.height: return ((x, y), True)
+                if y+incr < 0 or y+incr >= self.height:
+                    return ((x, y), True)
                 y += incr
 
-            if not skip_black or not self.is_black(x, y): break
+            if not skip_black or not self.is_black(x, y):
+                break
             (xo, yo) = (x, y)
 
-        if self.is_black(x, y): return ((xo, yo), True)
-        else: return ((x, y), False)
+        if self.is_black(x, y):
+            return ((xo, yo), True)
+        else:
+            return ((x, y), False)
 
     def find_blank_cell_recursive(self, x, y, mode, incr):
         if self.responses[x, y] == '' or self.errors[x, y] == MISTAKE:
             return (x, y)
         else:
             ((x, y), hit) = self.next_cell(x, y, mode, incr, False)
-            if hit: return None
-            else: return self.find_blank_cell_recursive(x, y, mode, incr)
+            if hit:
+                return None
+            else:
+                return self.find_blank_cell_recursive(x, y, mode, incr)
 
     def find_blank_cell(self, x, y, mode, incr):
         r = self.find_blank_cell_recursive(x, y, mode, incr)
-        if r == None: return (x, y)
-        else: return r
+        if r == None:
+            return (x, y)
+        else:
+            return r
 
     def is_cell_correct(self, x, y):
         return self.responses[x, y] == self.answers[x, y]
@@ -373,16 +397,21 @@ class Puzzle:
         n = self.mode_maps[mode][x, y]
         while True:
             n += incr
-            if not self.number_map.has_key(n): return 0
-            if mode == ACROSS and self.is_across[n]: break
-            if mode == DOWN and self.is_down[n]: break
+            if not self.number_map.has_key(n):
+                return 0
+            if mode == ACROSS and self.is_across[n]:
+                break
+            if mode == DOWN and self.is_down[n]:
+                break
         return n
 
     def final_number(self, mode):
         n = self.max_number
         while True:
-            if mode == ACROSS and self.is_across[n]: break
-            if mode == DOWN and self.is_down[n]: break
+            if mode == ACROSS and self.is_across[n]:
+                break
+            if mode == DOWN and self.is_down[n]:
+                break
             n -= 1
         return n
 
@@ -415,7 +444,7 @@ class ClueArea:
 
         self.col_height_fun = col_height_fun
         self.col_num = 0
-        
+
         self.y = self.col_height_fun(0, self.col_width, self.clue_font.size)
         self.x = self.num_width
 
@@ -436,7 +465,8 @@ class ClueArea:
 
     def open_group(self):
         self.group_start = self.items
-        if self.y < 0: self.nextcol()
+        if self.y < 0:
+            self.nextcol()
 
     def close_group(self):
         if self.y < 0:
@@ -470,7 +500,8 @@ class ClueArea:
                 word = line[0]
                 while True:
                     w += font.measure_text(word[i])
-                    if w > width: break
+                    if w > width:
+                        break
                     i += 1
                 line = [word[:i]]
                 words = [word[i:]] + words
@@ -513,10 +544,12 @@ class ClueArea:
                     self.add_item(self.x - nw, self.y, self.num_font, num)
                     self.add_wrapped_text(self.text_width,self.clue_font, clue)
 
-                    if self.close_group(): break
+                    if self.close_group():
+                        break
 
                 self.add_space(0.5)
-                if first: first = False
+                if first:
+                    first = False
 
     def setup(self):
         self.add_column('Across', ACROSS)
@@ -643,18 +676,19 @@ class PuzzlePrinter:
         num = length[:i].strip()
         units = length[i:].strip()
 
-        if units == '': return float(num)
+        if units == '':
+            return float(num)
 
         u = gnomeprint.unit_get_by_abbreviation(units)
         if u == None:
             print 'Bad unit:', length
             return 0.0
         return float(num) * u.unittobase
-        
+
     def draw(self, config):
         w = self.units(config.get(gnomeprint.KEY_PAPER_WIDTH))
         h = self.units(config.get(gnomeprint.KEY_PAPER_HEIGHT))
-        
+
         left = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_LEFT))
         top = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_TOP))
         right = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_RIGHT))
@@ -740,7 +774,7 @@ class PuzzleWidget:
     def __init__(self, puzzle, control):
         self.puzzle = puzzle
         self.control = control
-        
+
         self.area = gtk.DrawingArea()
         self.pango = self.area.create_pango_layout('')
         self.area.connect('expose-event', self.expose_event)
@@ -774,10 +808,10 @@ class PuzzleWidget:
             bw = width / self.puzzle.width
             bh = height / self.puzzle.height
             self.box_size = min(bw, bh)
-            
+
             self.width = self.box_size * self.puzzle.width
             self.height = self.box_size * self.puzzle.height
-            
+
             self.x = (width - self.width) / 2
             self.y = (height - self.height) / 2
         else:
@@ -787,8 +821,10 @@ class PuzzleWidget:
             self.y = 0
 
     def expose_event(self, area, event):
-        if self.puzzle: self.draw_puzzle()
-        else: self.draw_empty()
+        if self.puzzle:
+            self.draw_puzzle()
+        else:
+            self.draw_empty()
 
     def draw_empty(self):
         pass
@@ -817,7 +853,7 @@ class PuzzleWidget:
         for y in range(self.puzzle.height):
             for x in range(self.puzzle.width):
                 self.draw_box(x, y)
-        
+
         return True
 
     def draw_triangle(self, x0, y0, color, filled):
@@ -862,10 +898,14 @@ class PuzzleWidget:
         x0 = self.x + x*self.box_size
         y0 = self.y + y*self.box_size
 
-        if self.control.is_main_selection(x, y): color = self.red
-        elif self.control.is_selected(x, y): color = self.gray
-        elif self.puzzle.is_black(x, y): color = self.black
-        else: color = self.white
+        if self.control.is_main_selection(x, y):
+            color = self.red
+        elif self.control.is_selected(x, y):
+            color = self.gray
+        elif self.puzzle.is_black(x, y):
+            color = self.black
+        else:
+            color = self.white
 
         self.gc.set_foreground(color)
         view.draw_rectangle(self.gc, True, x0, y0,
@@ -877,7 +917,7 @@ class PuzzleWidget:
 
         letter = self.puzzle.responses[x, y]
         error = self.puzzle.errors[x, y]
-        
+
         if self.puzzle.number_rev_map.has_key((x, y)):
             n = str(self.puzzle.number_rev_map[x, y])
         else:
@@ -917,13 +957,13 @@ class ClueWidget:
     def configure_event(self, area, event):
         self.width, self.height = event.width, event.height
         self.pango.set_width(self.width * pango.SCALE)
-        
+
     def expose_event(self, area, event):
         view = self.area.window
         cm = view.get_colormap()
         self.black = cm.alloc_color('black')
         self.gc = view.new_gc(foreground = self.black)
-        
+
         size = 14
         while True:
             font = pango.FontDescription('Carlito %d' % size)
@@ -931,7 +971,8 @@ class ClueWidget:
             self.pango.set_text(self.control.get_selected_word())
             w, h = self.pango.get_pixel_size()
 
-            if h <= self.height: break
+            if h <= self.height:
+                break
             size -= 1
 
         x = (self.width - w) / 2
@@ -959,7 +1000,8 @@ class PuzzleController:
 
     def do_update(self, signal_ev, *args):
         for (ev, h) in self.handlers:
-            if ev == signal_ev: h(*args)
+            if ev == signal_ev:
+                h(*args)
 
     def signal(self):
         self.move_to(self.x, self.y)
@@ -1015,7 +1057,8 @@ class PuzzleController:
             self.do_update('down-update', self.puzzle.number(x, y, DOWN))
 
     def select_word(self, mode, n):
-        if mode <> self.mode: self.switch_mode()
+        if mode <> self.mode:
+            self.switch_mode()
         (x, y) = self.puzzle.number_map[n]
         (x, y) = self.puzzle.find_blank_cell(x, y, mode, 1)
         self.move_to(x, y)
@@ -1024,7 +1067,7 @@ class PuzzleController:
         self.puzzle.responses[self.x, self.y] = letter
         if self.puzzle.errors[self.x, self.y] == MISTAKE:
             self.puzzle.errors[self.x, self.y] = FIXED_MISTAKE
-            
+
         self.do_update('box-update', self.x, self.y)
 
         if self.puzzle.is_puzzle_correct():
@@ -1052,8 +1095,10 @@ class PuzzleController:
         n = self.puzzle.incr_number(self.x, self.y, self.mode, incr)
         if n == 0:
             self.switch_mode()
-            if incr == 1: n = 1
-            else: n = self.puzzle.final_number(self.mode)
+            if incr == 1:
+                n = 1
+            else:
+                n = self.puzzle.final_number(self.mode)
         (x, y) = self.puzzle.number_map[n]
         (x, y) = self.puzzle.find_blank_cell(x, y, self.mode, 1)
         self.move_to(x, y)
@@ -1096,7 +1141,7 @@ class PuzzleController:
                 self.puzzle.errors[x, y] = CHEAT
                 self.puzzle.responses[x, y] = self.puzzle.answers[x, y]
                 self.do_update('box-update', x, y)
-                    
+
         if self.puzzle.is_puzzle_correct():
             self.do_update('puzzle-finished')
 
@@ -1113,7 +1158,8 @@ class PuzzleController:
         clues = []
         m = self.puzzle.mode_clues[mode]
         for n in range(1, self.puzzle.max_number+1):
-            if m.has_key(n): clues.append((n, m[n]))
+            if m.has_key(n):
+                clues.append((n, m[n]))
         return clues
 
 class DummyController:
@@ -1182,8 +1228,10 @@ class PuzzleWindow:
         self.win = None
         self.set_puzzle(puzzle)
 
-        if self.puzzle: self.control = PuzzleController(self.puzzle)
-        else: self.control = DummyController()
+        if self.puzzle:
+            self.control = PuzzleController(self.puzzle)
+        else:
+            self.control = DummyController()
 
         self.skip_filled = False
         self.layout = 0
@@ -1193,8 +1241,9 @@ class PuzzleWindow:
         self.default_loc = None
 
         title = 'Crossword Puzzle'
-        if self.puzzle: title = 'Crossword Puzzle - %s' % self.puzzle.title
-        
+        if self.puzzle:
+            title = 'Crossword Puzzle - %s' % self.puzzle.title
+
         win = gtk.Window()
         self.handler = win.connect('destroy', lambda w: self.exit())
         win.set_title(title)
@@ -1205,8 +1254,9 @@ class PuzzleWindow:
         self.read_config()
 
         win.resize(self.window_size[0], self.window_size[1])
-        if self.maximized: win.maximize()
-        
+        if self.maximized:
+            win.maximize()
+
         vbox = gtk.VBox()
         win.add(vbox)
         vbox = vbox
@@ -1233,7 +1283,8 @@ class PuzzleWindow:
         gobject.timeout_add(500, self.idle_event)
         win.connect('key-press-event', self.key_event)
 
-        if not self.puzzle: self.enable_controls(False)
+        if not self.puzzle:
+            self.enable_controls(False)
 
         win.show_all()
 
@@ -1241,8 +1292,9 @@ class PuzzleWindow:
         self.puzzle_widget.area.grab_focus()
 
     def enable_controls(self, enabled):
-        def enable(w): w.set_property('sensitive', enabled)
-        
+        def enable(w):
+            w.set_property('sensitive', enabled)
+
         enable(self.menu_items['save'])
         enable(self.menu_items['print'])
         enable(self.toolbar_items['Check Word'])
@@ -1262,8 +1314,9 @@ class PuzzleWindow:
     def do_open_file(self, fname):
         if self.clock_running:
             self.clock_button.set_active(False)
-        
-        if self.puzzle: self.write_puzzle()
+
+        if self.puzzle:
+            self.write_puzzle()
 
         self.set_puzzle(Puzzle(fname))
         self.control = PuzzleController(self.puzzle)
@@ -1283,8 +1336,10 @@ class PuzzleWindow:
 
     def get_puzzle_file(self, puzzle):
         dir = os.path.expanduser('~/.crossword_puzzles')
-        try: os.mkdir(dir)
-        except OSError: pass
+        try:
+            os.mkdir(dir)
+        except OSError:
+            pass
 
         return dir + '/' + puzzle.hashcode()
 
@@ -1292,7 +1347,7 @@ class PuzzleWindow:
         pp = PersistentPuzzle()
         try:
             pp.from_binary(f.read())
-            
+
             self.puzzle.responses = pp.responses
             self.puzzle.errors = pp.errors
             self.clock_time = pp.clock
@@ -1306,13 +1361,16 @@ class PuzzleWindow:
         self.clock_time = 0.0
 
         self.puzzle = puzzle
-        if not self.puzzle: return
-        
+        if not self.puzzle:
+            return
+
         fname = self.get_puzzle_file(puzzle)
 
-        try: f = file(fname, 'r')
-        except IOError: return
-        
+        try:
+            f = file(fname, 'r')
+        except IOError:
+            return
+
         opts = ['Start Over', 'Continue']
         msg = ('This puzzle has been opened before. Would you like to'
                + ' continue where you left off?')
@@ -1320,8 +1378,9 @@ class PuzzleWindow:
             self.load_puzzle(fname, f)
 
     def write_puzzle(self):
-        if not self.puzzle: return
-        
+        if not self.puzzle:
+            return
+
         pp = PersistentPuzzle()
         pp.responses = self.puzzle.responses
         pp.errors = self.puzzle.errors
@@ -1370,7 +1429,7 @@ class PuzzleWindow:
         self.widgets = {}
 
         vbox = gtk.VBox()
-        
+
         clue = ClueWidget(self.control)
         vbox.pack_start(clue.widget, False, False, 0)
         self.clue_widget = clue
@@ -1391,31 +1450,36 @@ class PuzzleWindow:
         self.widgets['down'] = self.create_list(DOWN)
         self.load_list(ACROSS)
         self.load_list(DOWN)
-            
+
     def generate_layout(self, layout):
         if type(layout) == str:
             return self.widgets[layout]
         else:
-            if layout[0] == 'H': w = gtk.HPaned()
-            elif layout[0] == 'V': w = gtk.VPaned()
-            
+            if layout[0] == 'H':
+                w = gtk.HPaned()
+            elif layout[0] == 'V':
+                w = gtk.VPaned()
+
             w.add1(self.generate_layout(layout[1]))
             w.add2(self.generate_layout(layout[3]))
             w.set_position(layout[2])
             w.show()
-            
+
             return w
 
     def set_layout(self, index):
-        if not self.cur_layout: return
+        if not self.cur_layout:
+            return
 
         for w in self.widgets.values():
             p = w.get_parent()
-            if p: p.remove(w)
+            if p:
+                p.remove(w)
 
         p = self.cur_layout.get_parent()
-        if p: p.remove(self.cur_layout)
-        
+        if p:
+            p.remove(self.cur_layout)
+
         self.cur_layout = None
         self.layout = index
         self.positions = layouts[index][1]
@@ -1441,7 +1505,8 @@ class PuzzleWindow:
                     self.get_layout(children[1]))
         else:
             for (name, w) in self.widgets.items():
-                if w is widget: return name
+                if w is widget:
+                    return name
 
     def state_event(self, w, event):
         state = int(event.new_window_state)
@@ -1458,7 +1523,8 @@ class PuzzleWindow:
 
         def create_item(args, action, key, klass, active):
             item = klass(**args)
-            if active: item.set_active(True)
+            if active:
+                item.set_active(True)
             item.connect('activate', self.menu_selected, action)
             if key:
                 item.add_accelerator('activate', accel, ord(key),
@@ -1494,25 +1560,26 @@ class PuzzleWindow:
 
         prefs_menu = gtk.MenuItem('Preferences')
         menubar.append(prefs_menu)
-            
+
         menu = gtk.Menu()
         prefs_menu.set_submenu(menu)
-            
+
         append(menu, 'skip-filled',
                create_menu_item('Skip Filled', MENU_SKIP, None,
                                 gtk.CheckMenuItem, self.skip_filled))
         item = create_menu_item('Word List Layout', 0)
         append(menu, 'layout', item)
-        
+
         menu = gtk.Menu()
         item.set_submenu(menu)
-        
+
         g = None
         i = -1
         for (name, layout) in layouts:
             item = create_radio_item(name, i, g, -(i+1) == self.layout)
             menu.append(item)
-            if not g: item.set_active(True)
+            if not g:
+                item.set_active(True)
             g = item
             i -= 1
 
@@ -1534,13 +1601,16 @@ class PuzzleWindow:
             self.print_puzzle()
         elif action < 0:
             layout = -(action+1)
-            if layout <> self.layout: self.set_layout(layout)
+            if layout <> self.layout:
+                self.set_layout(layout)
 
     def create_toolbar_item(self, label, icon, tooltip, is_toggle=False):
         if icon:
             img = gtk.Image()
-            if icon[-4:] == '.png': img.set_from_file(icon)
-            else: img.set_from_stock(icon, gtk.ICON_SIZE_SMALL_TOOLBAR)
+            if icon[-4:] == '.png':
+                img.set_from_file(icon)
+            else:
+                img.set_from_stock(icon, gtk.ICON_SIZE_SMALL_TOOLBAR)
         else:
             img = None
 
@@ -1579,7 +1649,7 @@ class PuzzleWindow:
 
     def create_toolbar(self):
         self.toolbar_items = {}
-        
+
         toolbar = gtk.Toolbar()
         toolbar.set_style(gtk.TOOLBAR_BOTH)
         toolbar.set_orientation(gtk.ORIENTATION_HORIZONTAL)
@@ -1601,8 +1671,10 @@ class PuzzleWindow:
         return toolbar
 
     def create_list(self, mode):
-        if mode == ACROSS: label = 'Across'
-        else: label = 'Down'
+        if mode == ACROSS:
+            label = 'Across'
+        else:
+            label = 'Down'
 
         tree = gtk.TreeView()
         column = gtk.TreeViewColumn(label, gtk.CellRendererText(), text=1)
@@ -1615,7 +1687,7 @@ class PuzzleWindow:
         scroll.add(tree)
 
         self.trees[mode] = tree
-        
+
         return scroll
 
     def load_list(self, mode):
@@ -1633,7 +1705,7 @@ class PuzzleWindow:
         store = tree.get_model()
         n = store.get_value(store.get_iter(path), 0)
         self.control.select_word(mode, n)
-        
+
     def across_update(self, an):
         if self.tree_paths.has_key(ACROSS):
             selection = self.trees[ACROSS].get_selection()
@@ -1654,7 +1726,8 @@ class PuzzleWindow:
             total = int(self.clock_time)
         s = time_str(total)
         sold = self.clock_button.get_label()
-        if sold <> s: self.clock_button.set_label(s)
+        if sold <> s:
+            self.clock_button.set_label(s)
 
         return True
 
@@ -1667,7 +1740,8 @@ class PuzzleWindow:
             self.control.check_puzzle()
         elif event == 'Solve Word':
             self.control.solve_word()
-        else: # it must be the clock
+        else:
+            # it must be the clock
             self.clock_running = not self.clock_running
             if self.clock_running:
                 self.clock_start = time.time()
@@ -1677,22 +1751,31 @@ class PuzzleWindow:
     def button_event(self, widget, event, puzzle):
         if event.type is gtk.gdk.BUTTON_PRESS:
             (x, y) = puzzle.translate_position(event.x, event.y)
-            if event.button is 3: self.control.switch_mode()
+            if event.button is 3:
+                self.control.switch_mode()
             self.control.move_to(x, y)
 
     def key_event(self, item, event):
         name = gtk.gdk.keyval_name(event.keyval)
-        
+
         c = self.control
 
-        if name == 'Right': c.move(ACROSS, 1)
-        elif name == 'Left': c.move(ACROSS, -1)
-        elif name == 'Up': c.move(DOWN, -1)
-        elif name == 'Down': c.move(DOWN, 1)
-        elif name == 'BackSpace': c.back_space()
-        elif name == 'Return' or name == 'Tab': c.next_word(1)
-        elif name == 'ISO_Left_Tab': c.next_word(-1)
-        else: return False
+        if name == 'Right':
+            c.move(ACROSS, 1)
+        elif name == 'Left':
+            c.move(ACROSS, -1)
+        elif name == 'Up':
+            c.move(DOWN, -1)
+        elif name == 'Down':
+            c.move(DOWN, 1)
+        elif name == 'BackSpace':
+            c.back_space()
+        elif name == 'Return' or name == 'Tab':
+            c.next_word(1)
+        elif name == 'ISO_Left_Tab':
+            c.next_word(-1)
+        else:
+            return False
 
         return True
 
@@ -1711,8 +1794,10 @@ class PuzzleWindow:
             self.clock_button.set_active(False)
 
     def check_result(self, correct):
-        if correct: msg = 'No mistakes found'
-        else: msg = 'Incorrect.'
+        if correct:
+            msg = 'No mistakes found'
+        else:
+            msg = 'Incorrect.'
 
         self.status_bar.push(self.status_bar.get_context_id('stat'), msg)
 
@@ -1720,13 +1805,14 @@ class PuzzleWindow:
         def open_cb(w, open_dlg):
             self.do_open_file(open_dlg.get_filename())
             open_dlg.destroy()
-        
+
         if gtk.pygtk_version < (2,3,90):
             dlg = gtk.FileSelection('Select a puzzle')
             dlg.connect('destroy', lambda w: dlg.destroy())
             dlg.ok_button.connect('clicked', open_cb, dlg)
             dlg.cancel_button.connect('clicked', lambda w: dlg.destroy())
-            if self.default_loc: dlg.set_filename(self.default_loc + '/')
+            if self.default_loc:
+                dlg.set_filename(self.default_loc + '/')
             dlg.show()
         else:
             dlg = gtk.FileChooserDialog("Open...",
@@ -1735,7 +1821,8 @@ class PuzzleWindow:
                                         (gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
                                          gtk.STOCK_OPEN, gtk.RESPONSE_OK))
             dlg.set_default_response(gtk.RESPONSE_OK)
-            if self.default_loc: dlg.set_current_folder(self.default_loc)
+            if self.default_loc:
+                dlg.set_current_folder(self.default_loc)
 
             response = dlg.run()
             if response == gtk.RESPONSE_OK:
@@ -1747,13 +1834,14 @@ class PuzzleWindow:
         def save_cb(w, save_dlg):
             self.do_save_file(save_dlg.get_filename())
             save_dlg.destroy()
-        
+
         if gtk.pygtk_version < (2,3,90):
             dlg = gtk.FileSelection('Name the puzzle')
             dlg.connect('destroy', lambda w: dlg.destroy())
             dlg.ok_button.connect('clicked', save_cb, dlg)
             dlg.cancel_button.connect('clicked', lambda w: dlg.destroy())
-            if self.default_loc: dlg.set_filename(self.default_loc + '/')
+            if self.default_loc:
+                dlg.set_filename(self.default_loc + '/')
             dlg.show()
         else:
             dlg = gtk.FileChooserDialog("Save As...",
@@ -1762,7 +1850,8 @@ class PuzzleWindow:
                                         (gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
                                          gtk.STOCK_SAVE, gtk.RESPONSE_OK))
             dlg.set_default_response(gtk.RESPONSE_OK)
-            if self.default_loc: dlg.set_current_folder(self.default_loc)
+            if self.default_loc:
+                dlg.set_current_folder(self.default_loc)
 
             response = dlg.run()
             if response == gtk.RESPONSE_OK:
@@ -1811,6 +1900,6 @@ if __name__ == '__main__':
         p = None
     else:
         p = Puzzle(sys.argv[1])
-        
+
     w = PuzzleWindow(p)
     gtk.main()
