@@ -253,10 +253,13 @@ class Puzzle:
         import re
         r = re.compile("(.*, [SMTWFabcdefghijklmnopqrstuvwxyz]+, [JFMASONDabcdefghijklmnopqrstuvwxyz]+ [0-9]+, [0-9]{4}) (.*)")
         m = r.match(self.title)
-        g = m.groups()
-        if len(g) == 2:
-            self.pub = g[0]
-            self.title = g[1]
+        try:
+            g = m.groups()
+            if len(g) == 2:
+                self.pub = g[0]
+                self.title = g[1]
+        except:
+            pass
 
         self.author = massage(f.read_string())
         self.copyright = massage(f.read_string())
