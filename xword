@@ -57,7 +57,7 @@ CHECK_ALL_ICON = HOME_PATH + '/crossword-check-all.png'
 SOLVE_ICON = HOME_PATH + '/crossword-solve.png'
 TIMER_ICON = HOME_PATH + '/crossword-clock.png'
 
-MIN_BOX_SIZE = 40
+MIN_BOX_SIZE = 36
 
 ACROSS = 0
 DOWN = 1
@@ -415,7 +415,7 @@ class ClueArea:
         self.col_height_fun = col_height_fun
         self.col_num = 0
         
-        self.y = self.col_height_fun(0, self.col_width) - self.clue_font.size
+        self.y = self.col_height_fun(0, self.col_width, self.clue_font.size)
         self.x = self.num_width
 
         self.items = []
@@ -430,7 +430,7 @@ class ClueArea:
         self.x += self.col_width
 
         x = self.x - self.num_width
-        h = self.col_height_fun(x, x + self.col_width)
+        h = self.col_height_fun(x, x + self.col_width, self.clue_font.size)
         self.y = h - self.clue_font.size
 
     def open_group(self):
@@ -621,8 +621,8 @@ class PuzzlePrinter:
 
         maxw = right - left
 
-        def coltoprel(x0, x1):
-            return coltop(x0 + left, x1 + left) - bottom
+        def coltoprel(x0, x1, clue_font_size):
+            return coltop(x0 + left, x1 + left, clue_font_size) - bottom
 
         size = 12
         while True:
@@ -662,10 +662,10 @@ class PuzzlePrinter:
             (left, bottom, right, top) = (bottom, left, top, right)
 
         print("KEY_PAGE_MARGIN_BOTTOM: %d\n", (config.get(gnomeprint.KEY_PAGE_MARGIN_TOP), config.get(gnomeprint.KEY_PAGE_MARGIN_BOTTOM), config.get(gnomeprint.KEY_PAGE_MARGIN_LEFT), config.get(gnomeprint.KEY_PAGE_MARGIN_RIGHT)))
-        bottom = self.units("2 cm")
-        left= self.units("1.5 cm")
-        right = self.units("1.5 cm")
-        top = self.units("3.5 cm")
+        bottom = self.units("1 cm")
+        left= self.units("2 cm")
+        right = self.units("2 cm")
+        top = self.units("3 cm")
         print("bottom: %d\n", (top, bottom, left, right))
 
         right = w - right
@@ -686,13 +686,13 @@ class PuzzlePrinter:
         (w, h) = self.min_puzzle_size(r)
         h += 0.05 * h
 
-        def coltop(x0, x1):
+        def coltop(x0, x1, clue_font_size):
             if ((x0 >= left and x0 <= left+w) or (x1 >= left and x1 <= left+w)
                 or (x0 <= left and x1 >= left+w)):
-                return top - h
+                return top - h - clue_font_size
             else:
-                return top
-            
+                return (bottom - clue_font_size) + (h - clue_font_size) - clue_font_size
+
         fullr = (left, bottom, right, top)
         col_width = self.draw_clues(fullr, coltop)
 
