@@ -491,9 +491,9 @@ class ClueArea:
         self.label_font = PrintFont('Carlito', 'Bold', font_size*1.25)
         self.num_font = PrintFont('Carlito', 'Bold', font_size)
 
-        spacer = 'This is the width of a column'
+        spacer = 'This is the width of a colu' #umn'
         self.col_width = self.clue_font.measure_text(spacer)
-        self.num_width = self.num_font.measure_text('100. ')
+        self.num_width = self.num_font.measure_text('100.') + self.num_font.measure_text(' ')*2/3
         self.text_width = (self.col_width - self.num_width) * 0.9
 
         (w,h) = self.printer.min_puzzle_size
@@ -521,8 +521,8 @@ class ClueArea:
     def cr(self):
         return self.clue_region[-1]
 
-    def add_item(self, x, y, font, text):
-        self.items = self.items + [(x, y, font, text)]
+    def add_item(self, x, y, font, text, rj=False):
+        self.items = self.items + [(x, y, font, text, rj)]
 
     def nextcol(self):
         self.col_num += 1
@@ -552,8 +552,10 @@ class ClueArea:
             return True
 
     def draw(self, gpc):
-        for (x, y, font, text) in self.items:
+        for (x, y, font, text, rj) in self.items:
             gpc.setfont(font.font)
+            if rj:
+                x -= font.measure_text(text) + font.measure_text(' ')*2/3
             gpc.moveto(x, y)
             gpc.show(text)
 
@@ -599,7 +601,7 @@ class ClueArea:
         #    wholestring += x
         #wholestring = ' '.join([str(s) for s in wholestring])
         #print("adding %s" % (wholestring,))
-        self.add_item(self.cr.x, self.cr.y, prefix[0], prefix[1])
+        self.add_item(self.cr.x+self.num_width, self.cr.y, prefix[0], prefix[1], rj=True)
         for line in lines:
             s = ' '.join(line)
             self.add_item(self.cr.x+self.num_width, self.cr.y, font, s)
@@ -630,7 +632,7 @@ class ClueArea:
             m = self.puzzle.mode_clues[mode]
             if m.has_key(n):
                 clue = m[n]
-                num = '%d. ' % n
+                num = '%d.' % n
 
                 while True:
                     self.open_group()
