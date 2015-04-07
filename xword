@@ -613,6 +613,9 @@ class ClueArea:
         self.cr.y -= self.clue_font.size * pct
 
     def add_label(self, label):
+        new_y = self.cr.y - self.label_font.size - self.clue_font.size * 1.5
+        if new_y < self.cr.bottom:
+            self.nextcol()
         start = self.cr.x
         stop = self.cr.x + self.text_width
         w = self.label_font.measure_text(label)
