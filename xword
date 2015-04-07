@@ -263,7 +263,6 @@ class Puzzle:
 
         self.author = massage(f.read_string())
         self.copyright = massage(f.read_string())
-        #print("pub: \"%s\"\ntitle: \"%s\"\nauthor: \"%s\"\ncopyright: \"%s\"" % (self.pub, self.title, self.author,self.copyright))
 
         self.clues = []
         clue = f.read_string()
@@ -448,14 +447,16 @@ class PrintFont:
 
 class ClueRegion:
     def __init__(self, top, bottom, left, right):
-        #print("ClueRegion(left=%d,top=%d,right=%d,bottom=%d)" % (left,top,right,bottom))
         self._top = top
         self._bottom = bottom
         self._left = left
         self._right = right
 
-        self.x = self.left
-        self.y = self.top
+        self.x = self._left
+        self.y = self._top
+
+    def __str__(self):
+        return "ClueRegion(%d,%d,%d,%d,x=%f,y=%f)" % (self.top, self.bottom, self.left, self.right, self.x, self.y)
 
     @property
     def h(self):
@@ -496,7 +497,6 @@ class ClueArea:
         self.text_width = (self.col_width - self.num_width) * 0.9
 
         (w,h) = self.printer.min_puzzle_size
-        #print("h: %d h*1.05: %d" % (h,h*1.05))
         bottom = self.printer.bottom
         if self.puzzle.left_grid:
             top = self.printer.top - (h * 1.05) - self.clue_font.size
@@ -510,13 +510,16 @@ class ClueArea:
                 top = self.printer.banner_bottom - self.clue_font.size * 2
 
         self.col_num = 0
-        self.clue_region = ClueRegion(top, bottom, left, right)
-
-        #print("self.clue_region.x: %d self.clue_region.y: %d" % (self.clue_region.x, self.clue_region.y))
+        self.clue_region = []
+        self.clue_region.append(ClueRegion(top, bottom, left, right))
+        #print("Adding %s" % (self.clue_region[-1]))
 
         self.items = []
-        self.group_start = None
         self.setup()
+
+    @property
+    def cr(self):
+        return self.clue_region[-1]
 
     def add_item(self, x, y, font, text):
         self.items = self.items + [(x, y, font, text)]
@@ -525,8 +528,7 @@ class ClueArea:
         self.col_num += 1
 
         (w,h) = self.printer.min_puzzle_size
-        bottom = self.clue_region.bottom
-        left = self.clue_region.left + self.col_width
+        left = self.cr.left + self.col_width
         right = left + self.col_width
         top = self.printer.top - (h * 1.05) - self.clue_font.size
         if self.puzzle.left_grid:
@@ -536,16 +538,15 @@ class ClueArea:
             if right <= self.printer.grid_left:
                 top = self.printer.banner_bottom - self.clue_font.size * 2
 
-        self.clue_region = ClueRegion(top, bottom, left, right)
+        self.clue_region.append(ClueRegion(top, self.cr.bottom, left, right))
+        #print("Adding %s" % (self.clue_region[-1]))
 
     def open_group(self):
-        self.group_start = self.items
-        if self.clue_region.y < self.clue_region.bottom:
+        if self.cr.y < self.cr.bottom:
             self.nextcol()
 
-    def close_group(self):
-        if self.clue_region.y < 0:
-            self.items = self.group_start
+    def close_group(self, force=False):
+        if self.cr.y < self.cr.bottom:
             return False
         else:
             return True
@@ -559,6 +560,7 @@ class ClueArea:
     def add_wrapped_text(self, width, font, text, prefix):
         words = text.split(' ')
         lines = []
+        new_column = False
         while len(words) > 0:
             w = 0.0
             line = []
@@ -584,35 +586,47 @@ class ClueArea:
                 words = [line.pop()] + words
             lines.append(line)
 
-        if self.clue_region.y - len(lines) * font.size < self.clue_region.bottom:
-            self.close_group()
+        if self.cr.y - len(lines) * font.size < self.cr.bottom:
+            if new_column:
+                return
+            new_column = True
             self.nextcol()
-            self.open_group()
+        else:
+            new_column = False
 
-        self.add_item(self.clue_region.x, self.clue_region.y, prefix[0], prefix[1])
+        #wholestring = [prefix[1]]
+        #for x in lines:
+        #    wholestring += x
+        #wholestring = ' '.join([str(s) for s in wholestring])
+        #print("adding %s" % (wholestring,))
+        self.add_item(self.cr.x, self.cr.y, prefix[0], prefix[1])
         for line in lines:
             s = ' '.join(line)
-            self.add_item(self.clue_region.x+self.num_width, self.clue_region.y, font, s)
-            self.clue_region.y -= font.size
+            self.add_item(self.cr.x+self.num_width, self.cr.y, font, s)
+            self.cr.y -= font.size
+            if self.cr.y < 0:
+                raise RuntimeError, "invalid y %f" % (self.cr.y,)
 
     def add_space(self, pct):
-        self.clue_region.y -= self.clue_font.size * pct
+        self.cr.y -= self.clue_font.size * pct
 
     def add_label(self, label):
-        start = self.clue_region.x
-        stop = self.clue_region.x + self.text_width
+        start = self.cr.x
+        stop = self.cr.x + self.text_width
         w = self.label_font.measure_text(label)
         x0 = start + (stop - start - w)/2
 
-        #print("top: %d banner_top: %d banner_h: %d banner_bottom: %d grid_top: %d grid_h: %d grid_bottom: %d" % (self.printer.top, self.printer.banner_top, self.printer.banner_h, self.printer.banner_bottom, self.printer.grid_top, self.printer.grid_h, self.printer.grid_bottom))
-        #print("adding label \"%s\" at (%d,%d)" % (label, x0, self.clue_region.y))
-        self.add_item(x0, self.clue_region.y, self.label_font, label)
-        self.clue_region.y -= self.label_font.size
+        #print("adding label \"%s\" at (%d,%d)" % (label, x0, self.cr.y))
+        self.add_item(x0, self.cr.y, self.label_font, label)
+        self.cr.y -= self.label_font.size
 
     def add_column(self, name, mode):
         first = True
         last = self.puzzle.max_number+1
         for n in range(1, last):
+            # don't make a million columns if we know it won't fit.
+            if self.cr.x > self.printer.right:
+                break
             m = self.puzzle.mode_clues[mode]
             if m.has_key(n):
                 clue = m[n]
@@ -625,8 +639,7 @@ class ClueArea:
                         self.add_space(0.5)
                         first = False
 
-                    #print("adding num %s at (%d,%d)" % (num, self.clue_region.x, self.clue_region.y))
-                    self.add_wrapped_text(self.text_width,self.clue_font, clue, (self.num_font, num))
+                    self.add_wrapped_text(self.text_width, self.clue_font, clue, (self.num_font, num))
 
                     if self.close_group():
                         break
@@ -661,9 +674,9 @@ class PuzzlePrinter:
         if left < left2cm:
             left = left2cm
 
-        top = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_TOP))
+        top = float(self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_TOP)))
         #print("KEY_PAGE_MARGIN_TOP: %d" % (top))
-        top3cm = self.units("45mm")
+        top3cm = float(self.units("42mm"))
         #print("top3cm: %d" % (top3cm))
         if top < top3cm:
             top = top3cm
@@ -696,6 +709,7 @@ class PuzzlePrinter:
         self._w = w
         self._h = h
 
+        self._min_box_size = None
         self.num_font = PrintFont('Carlito', 'Regular', self.box_size * 0.3)
         self.let_font = PrintFont('Carlito', 'Regular', self.box_size * 0.6)
 
@@ -751,7 +765,6 @@ class PuzzlePrinter:
 
     @property
     def banner_w(self):
-        #print("self.h: %d self.w: %d" % (self.h, self.w))
         if self.h > self.w:
             return self.right - self.left
         else:
@@ -796,13 +809,19 @@ class PuzzlePrinter:
     @property
     def box_w(self):
         if self.h > self.w:
-            return (self._right - self._left) / float(self.puzzle.width)
+            return (self.right - self.left) / float(self.puzzle.width)
         else:
-            return (self.mid - self._left)/float(self.puzzle.width)
+            return (self.mid - self.left) / float(self.puzzle.width)
 
     @property
     def box_size(self):
-        return int(min(self.box_w, self.box_h))
+        if self._min_box_size is None:
+            self._min_box_size = int(min(self.box_w, self.box_h))
+        return self._min_box_size
+
+    @property
+    def max_box_size(self):
+        return 23
 
     @property
     def grid_top(self):
@@ -812,7 +831,6 @@ class PuzzlePrinter:
     def grid_bottom(self):
         (w,h) = self.min_puzzle_size
         bottom = self.banner_bottom - (self.puzzle.height)*self.box_size
-        #print("bottom: %d self.grid_top-h: %d" % (bottom, self.grid_top-h))
         if bottom > self.grid_top - h:
             return self.grid_top - h
         return bottom
@@ -833,7 +851,6 @@ class PuzzlePrinter:
         if self.puzzle.left_grid:
             (w,h) = self.min_puzzle_size
             right = self.left + (self.puzzle.width)*self.box_size
-            #print("right: %d self.grid_left+w: %d" % (right, self.grid_left+w))
             if right < self.grid_left + w:
                 return self.grid_left + w
             return right
@@ -925,11 +942,6 @@ class PuzzlePrinter:
         puzzle = self.puzzle
         self.draw_banner()
 
-        #left = self.left + ((self.right - self.left) - self.w)/2
-        #top = self.top - self.banner_h
-
-        #print("grid_top: %d grid_left: %d" % (self.grid_top, self.grid_left))
-
         for y in range(puzzle.height):
             for x in range(puzzle.width):
                 self.draw_box(x, y)
@@ -937,13 +949,47 @@ class PuzzlePrinter:
     def draw_clues(self):
         maxw = self.right - self.left
 
-        size = 15.0
+        start_size = 15.0
+        size = start_size
+        saved_size = None
+        saved_box_size = None
+        saved_col_num = None
         while True:
             area = ClueArea(self, size)
             w = area.width()
-            if w <= maxw:
-                break
-            size -= 0.1
+            if maxw < w:
+                size -= 0.1
+                #print("trying new size %f" % (size,))
+                if size < 0:
+                    if saved_size:
+                        self._min_box_size = saved_box_size
+                        area = ClueArea(self, saved_size)
+                        break
+                    else:
+                        raise RuntimeError, "Could not draw grid"
+                continue
+            if saved_size:
+                if (area.col_width > self.w - self.grid_w) or \
+                        (saved_col_num < area.col_num) or \
+                        (self.right - area.cr.right > area.col_width):
+                    self._min_box_size = saved_box_size
+                    area = ClueArea(self, saved_size)
+                    break
+            #print("found valid width %f (<= %f)" % (w, maxw))
+            saved_size = size
+            saved_box_size = self._min_box_size
+            saved_col_num = area.col_num
+            if (w <= maxw * .95) \
+                    or (self.puzzle.left_grid and \
+                        area.cr.left - self.grid_right > maxw * 0.05) \
+                    or (self.puzzle.left_grid is False and \
+                        self.grid_left - area.clue_region[0].right > \
+                        maxw * 0.05):
+                if self.box_size < self.max_box_size:
+                    self._min_box_size += 1
+                    size = start_size
+                    continue
+            break
 
         area.draw(self.gpc)
         return area.col_width
