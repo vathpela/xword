@@ -976,9 +976,11 @@ class PuzzlePrinter:
             if saved_size:
                 if (area.col_width > self.w - self.grid_w) or \
                         (saved_col_num < area.col_num) or \
-                        (self.right - area.cr.right > area.col_width):
+                        (self.right - area.cr.right > area.col_width) or \
+                        area.width() > maxw:
                     self._min_box_size = saved_box_size
-                    area = ClueArea(self, saved_size)
+                    size = saved_size
+                    area = ClueArea(self, size)
                     break
             #print("found valid width %f (<= %f)" % (w, maxw))
             saved_size = size
