@@ -959,6 +959,7 @@ class PuzzlePrinter:
         saved_size = None
         saved_box_size = None
         saved_col_num = None
+        area = ClueArea(self, size)
         while True:
             area = ClueArea(self, size)
             w = area.width()
@@ -997,6 +998,48 @@ class PuzzlePrinter:
                     size = start_size
                     continue
             break
+
+        prev_left = self._left
+        prev_right = self._right
+        prev_w = self._w
+        prev_cols = area.col_num
+        prev_col_0_top = area.clue_region[0].top
+        prev_yy = 0.2
+        yy = 0.2
+        maxw = self.right - self.left
+        while True:
+            zz = self._left * (1.0 + yy) - self._left
+            self._left += zz
+            self._right -= zz
+            #print("Adjusting width from %f to %f (factor %f)" % (self._w, self._w - zz*2, yy))
+            self._w -= zz * 2.0
+            area = ClueArea(self, size)
+            if (area.col_num != prev_cols) or (maxw < area.width()) \
+                    or (prev_col_0_top > area.clue_region[0].top + 1) \
+                    or (prev_col_0_top < area.clue_region[0].top - 1):
+                #if area.col_num != prev_cols:
+                #    print("bad columns %d %d" % (area.col_num,prev_cols))
+                #elif maxw < area.width():
+                #    print("bad width: %f %f" % (maxw, area.width()))
+                #elif prev_col_0_top > area.clue_region[0].top:
+                #    print("bad top: %f %f" % (prev_col_0_top, area.clue_region[0].top))
+                #xx = yy - (100.0/(n*100))/(yy*100)
+                xx = yy * 0.95
+                prev_yy = yy
+                yy = xx
+                self._left = prev_left
+                self._right = prev_right
+                self._w = prev_w
+                #print("yy: %f prev_yy: %f" % (yy,prev_yy))
+                if yy < 0.00001:
+                    area = ClueArea(self, size)
+                    break
+                continue
+            else:
+                prev_left = self._left
+                prev_right = self._right
+                prev_w = self._w
+        #print("final width %f" % (self._w))
 
         area.draw(self.gpc)
         return area.col_width
