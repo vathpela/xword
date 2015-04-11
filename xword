@@ -60,6 +60,9 @@ TIMER_ICON = HOME_PATH + '/crossword-clock.png'
 MIN_BOX_SIZE = 14
 MAX_BOX_SIZE = 23
 
+MIN_FONT_SIZE = 5
+MAX_FONT_SIZE = 15
+
 ACROSS = 0
 DOWN = 1
 
@@ -666,6 +669,7 @@ class ClueArea:
         self.add_space(0.5)
         self.add_column('Down', DOWN)
 
+    @property
     def width(self):
         return (self.col_num + 1) * self.col_width
 
@@ -938,6 +942,10 @@ class PuzzlePrinter:
         else:
             return (self._right -self._left) / 2
 
+    @property
+    def maxw(self):
+        return self.right - self.left
+
     def draw_grid(self):
         puzzle = self.puzzle
         self.draw_banner()
@@ -947,42 +955,41 @@ class PuzzlePrinter:
                 self.draw_box(x, y)
 
     def draw_clues(self):
-        maxw = self.right - self.left
-
-        start_size = 15.0
-        size = start_size
+        maxw = self.maxw
+        size = MAX_FONT_SIZE
         saved_size = None
         saved_box_size = None
         saved_col_num = None
         area = ClueArea(self, size)
+        # try to find a font small enough to fit in our puzzle at all
         while True:
             area = ClueArea(self, size)
-            w = area.width()
-            if maxw < w:
+            if maxw < area.width:
                 size -= 0.1
-                #print("trying new size %f" % (size,))
-                if size < 0:
+                if size < MIN_FONT_SIZE:
                     if saved_size:
                         self._box_size = saved_box_size
                         area = ClueArea(self, saved_size)
                         break
                     else:
-                        raise RuntimeError, "Could not draw grid"
+                        self._box_size = MIN_BOX_SIZE
+                        area = ClueArea(self, MIN_FONT_SIZE)
+                        break
                 continue
             if saved_size:
                 if (area.col_width > self.w - self.grid_w) or \
                         (saved_col_num < area.col_num) or \
                         (self.right - area.cr.right > area.col_width) or \
-                        area.width() > maxw:
+                        area.width > maxw:
                     self._box_size = saved_box_size
                     size = saved_size
                     area = ClueArea(self, size)
                     break
-            #print("found valid width %f (<= %f)" % (w, maxw))
+            #print("found valid width %f (<= %f)" % (area.width, maxw))
             saved_size = size
             saved_box_size = self.box_size
             saved_col_num = area.col_num
-            if (w <= maxw * .95) \
+            if (area.width <= maxw * .95) \
                     or (self.puzzle.left_grid and \
                         area.cr.left - self.grid_right > maxw * 0.05) \
                     or (self.puzzle.left_grid is False and \
@@ -990,7 +997,7 @@ class PuzzlePrinter:
                         maxw * 0.05):
                 if self.box_size < MAX_BOX_SIZE:
                     self._box_size += 1
-                    size = start_size
+                    size = MAX_FONT_SIZE
                     continue
             break
 
@@ -1009,13 +1016,13 @@ class PuzzlePrinter:
             #print("Adjusting width from %f to %f (factor %f)" % (self._w, self._w - zz*2, yy))
             self._w -= zz * 2.0
             area = ClueArea(self, size)
-            if (area.col_num != prev_cols) or (maxw < area.width()) \
+            if (area.col_num != prev_cols) or (maxw < area.width) \
                     or (prev_col_0_top > area.clue_region[0].top + 1) \
                     or (prev_col_0_top < area.clue_region[0].top - 1):
                 #if area.col_num != prev_cols:
                 #    print("bad columns %d %d" % (area.col_num,prev_cols))
-                #elif maxw < area.width():
-                #    print("bad width: %f %f" % (maxw, area.width()))
+                #elif maxw < area.width:
+                #    print("bad width: %f %f" % (maxw, area.width))
                 #elif prev_col_0_top > area.clue_region[0].top:
                 #    print("bad top: %f %f" % (prev_col_0_top, area.clue_region[0].top))
                 #xx = yy - (100.0/(n*100))/(yy*100)
@@ -1024,7 +1031,6 @@ class PuzzlePrinter:
                 yy = xx
                 self._left = prev_left
                 self._right = prev_right
-                self._w = prev_w
                 #print("yy: %f prev_yy: %f" % (yy,prev_yy))
                 if yy < 0.00001:
                     area = ClueArea(self, size)
@@ -1122,8 +1128,8 @@ class PuzzleWidget:
         self.control = control
 
         if puzzle:
-            width = puzzle.width * MIN_BOX_SIZE
-            height = puzzle.height * MIN_BOX_SIZE
+            width = int(puzzle.width * MIN_BOX_SIZE)
+            height = int(puzzle.height * MIN_BOX_SIZE)
             self.area.set_size_request(width, height)
         else:
             self.box_size = MIN_BOX_SIZE
@@ -1269,7 +1275,7 @@ class ClueWidget:
         self.control = control
 
         width = 0
-        height = MIN_BOX_SIZE
+        height = int(MIN_BOX_SIZE)
 
         self.area = gtk.DrawingArea()
         self.pango = self.area.create_pango_layout('')
