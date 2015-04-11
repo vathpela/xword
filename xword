@@ -671,56 +671,41 @@ class PuzzlePrinter:
         if job:
             self.job = job
 
-        config = self.job.get_config()
+        self._h = 0
+        self._w = 0
+        self._top = 0
+        self._bottom = 0
+        self._left = 0
+        self._right = 0
+
+        self._min_box_size = MIN_BOX_SIZE
+        self.num_font = PrintFont('Carlito', 'Regular', self.box_size * 0.3)
+        self.let_font = PrintFont('Carlito', 'Regular', self.box_size * 0.6)
+
+        self.config(self.job.get_config())
+
+    def config(self, config):
         w = self.units(config.get(gnomeprint.KEY_PAPER_WIDTH))
         h = self.units(config.get(gnomeprint.KEY_PAPER_HEIGHT))
-        if config.get(gnomeprint.KEY_PAGE_ORIENTATION) == 'R90':
-            print("landscape...")
+
+        if config.get(gnomeprint.KEY_PAGE_ORIENTATION) in set(['R90','R270']):
             (w,h) = (h,w)
+            left = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_BOTTOM)) / 4
+            right = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_TOP)) / 4
+        else:
+            left = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_LEFT)) / 4
+            right = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_RIGHT)) / 4
 
-        left = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_LEFT))
-        left2cm = self.units("1.25 cm")
-        if left < left2cm:
-            left = left2cm
-
-        top = float(self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_TOP)))
-        #print("KEY_PAGE_MARGIN_TOP: %d" % (top))
-        top3cm = float(self.units("42mm"))
-        #print("top3cm: %d" % (top3cm))
-        if top < top3cm:
-            top = top3cm
-
-        right = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_RIGHT))
-        right2cm = self.units("1.25 cm")
-        if right < right2cm:
-            right = right2cm
-
-        bottom = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_BOTTOM))
-        bottom1cm = self.units("1.5 cm")
-        if bottom < bottom1cm:
-            bottom = bottom1cm
-
-        # but actually gnomeprint is giving us crap
-        # lmrtbhw: 56 392 538 756 28 841 595 <-- us letter
-        left = left2cm
-        right = right2cm
-        #top = top3cm
-        bottom = bottom1cm
-
-        if config.get(gnomeprint.KEY_PAGE_ORIENTATION) == 'R90':
-            (left, bottom, right, top) = (bottom, left, top, right)
-
-        self._top = h - top
-        self._bottom = bottom
-        self._left = left
-        self._right = w - right
+        top = self.units("24 mm")
+        bottom = self.units("12.5 mm")
 
         self._w = w
         self._h = h
 
-        self._min_box_size = None
-        self.num_font = PrintFont('Carlito', 'Regular', self.box_size * 0.3)
-        self.let_font = PrintFont('Carlito', 'Regular', self.box_size * 0.6)
+        self._top = self.h - top
+        self._bottom = bottom
+        self._left = left
+        self._right = w - right
 
     @property
     def top(self):
@@ -1087,6 +1072,7 @@ class PuzzlePrinter:
 
     def do_print(self, dialog, res, job):
         config = job.get_config()
+        self.config(config)
 
         if res == gnomeprint.ui.DIALOG_RESPONSE_CANCEL:
             dialog.destroy()
