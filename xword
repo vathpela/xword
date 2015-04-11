@@ -438,7 +438,11 @@ class PrintFont:
         self.face = gnomeprint.font_face_find_from_family_and_style(family,
                                                                     style)
         self.font = gnomeprint.font_find_closest(self.face.get_name(), size)
-        self.size = size
+        self._size = size
+
+    @property
+    def size(self):
+        return self._size
 
     def measure_text(self, s):
         w = 0.0
