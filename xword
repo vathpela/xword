@@ -75,6 +75,8 @@ MENU_QUIT = 5
 
 MENU_SKIP = 10
 
+DRAW_BOX = True
+
 layouts = [
     ('Only Puzzle', 'puzzle'),
     ('Right Side', ('H', 'puzzle', 550, ('V', 'across', 250, 'down'))),
@@ -1065,14 +1067,8 @@ class PuzzlePrinter:
     def draw(self, config):
         self.gpc.beginpage("1")
 
-        #if config.get(gnomeprint.KEY_PAGE_ORIENTATION) == 'R90':
-        #    print("lrtmbhw: %d %d %d %d %d %d %d" % (self.left, self.right, self.top, self.mid, self.bottom, self.h, self.w))
-        #    #print("lmrtbhw: %d %d %d %d %d %d %d" % (self.left, self.mid, self.right, self.top, self.bottom, self.h, self.w))
-        #else:
-        #    print("lrtmbhw: %d %d %d %d %d %d %d" % (self.left, self.right, self.top, self.mid, self.bottom, self.h, self.w))
-
-        #self.gpc.rect_stroked(self.left, self.bottom, self.right-self.left, self.top-self.bottom)
-        #print("grid_bottom: %d grid_right: %d" % (self.grid_bottom, self.grid_right))
+        if DRAW_BOX:
+            self.gpc.rect_stroked(self.left, self.bottom, self.right-self.left, self.top-self.bottom)
 
         col_width = self.draw_clues()
         self.draw_grid()
