@@ -57,7 +57,8 @@ CHECK_ALL_ICON = HOME_PATH + '/crossword-check-all.png'
 SOLVE_ICON = HOME_PATH + '/crossword-solve.png'
 TIMER_ICON = HOME_PATH + '/crossword-clock.png'
 
-MIN_BOX_SIZE = 36
+MIN_BOX_SIZE = 14
+MAX_BOX_SIZE = 23
 
 ACROSS = 0
 DOWN = 1
@@ -682,9 +683,9 @@ class PuzzlePrinter:
         self._left = 0
         self._right = 0
 
-        self._min_box_size = MIN_BOX_SIZE
-        self.num_font = PrintFont('Carlito', 'Regular', self.box_size * 0.3)
-        self.let_font = PrintFont('Carlito', 'Regular', self.box_size * 0.6)
+        self._box_size = None
+        self.num_font = None
+        self.let_font = None
 
         self.config(self.job.get_config())
 
@@ -710,6 +711,13 @@ class PuzzlePrinter:
         self._bottom = bottom
         self._left = left
         self._right = w - right
+
+        default = int(min(self.box_w, self.box_h))
+        default = min(default, MAX_BOX_SIZE)
+        default = max(default, MIN_BOX_SIZE)
+        self._box_size = default
+        self.num_font = PrintFont('Carlito', 'Regular', self.box_size * 0.3)
+        self.let_font = PrintFont('Carlito', 'Regular', self.box_size * 0.6)
 
     @property
     def top(self):
@@ -813,13 +821,7 @@ class PuzzlePrinter:
 
     @property
     def box_size(self):
-        if self._min_box_size is None:
-            self._min_box_size = int(min(self.box_w, self.box_h))
-        return self._min_box_size
-
-    @property
-    def max_box_size(self):
-        return 23
+        return self._box_size
 
     @property
     def grid_top(self):
@@ -961,7 +963,7 @@ class PuzzlePrinter:
                 #print("trying new size %f" % (size,))
                 if size < 0:
                     if saved_size:
-                        self._min_box_size = saved_box_size
+                        self._box_size = saved_box_size
                         area = ClueArea(self, saved_size)
                         break
                     else:
@@ -972,13 +974,13 @@ class PuzzlePrinter:
                         (saved_col_num < area.col_num) or \
                         (self.right - area.cr.right > area.col_width) or \
                         area.width() > maxw:
-                    self._min_box_size = saved_box_size
+                    self._box_size = saved_box_size
                     size = saved_size
                     area = ClueArea(self, size)
                     break
             #print("found valid width %f (<= %f)" % (w, maxw))
             saved_size = size
-            saved_box_size = self._min_box_size
+            saved_box_size = self.box_size
             saved_col_num = area.col_num
             if (w <= maxw * .95) \
                     or (self.puzzle.left_grid and \
@@ -986,8 +988,8 @@ class PuzzlePrinter:
                     or (self.puzzle.left_grid is False and \
                         self.grid_left - area.clue_region[0].right > \
                         maxw * 0.05):
-                if self.box_size < self.max_box_size:
-                    self._min_box_size += 1
+                if self.box_size < MAX_BOX_SIZE:
+                    self._box_size += 1
                     size = start_size
                     continue
             break
