@@ -1052,7 +1052,6 @@ class PuzzlePrinter:
         #print("final width %f" % (self._w))
 
         area.draw(self.gpc)
-        return area.col_width
 
     def units(self, length):
         i = 0
@@ -1076,7 +1075,7 @@ class PuzzlePrinter:
         if DRAW_BOX:
             self.gpc.rect_stroked(self.left, self.bottom, self.right-self.left, self.top-self.bottom)
 
-        col_width = self.draw_clues()
+        self.draw_clues()
         self.draw_grid()
         self.gpc.showpage()
 
