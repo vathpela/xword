@@ -491,7 +491,9 @@ class ClueArea:
         self.label_font = PrintFont('Carlito', 'Bold', font_size*1.25)
         self.num_font = PrintFont('Carlito', 'Bold', font_size)
 
-        spacer = 'This is the width of a colu' #umn'
+        spacer = 'This is the width of a colu' #mn'
+        if self.puzzle.mode_clues[0] < 65 and self.puzzle.mode_clues[1] < 65:
+            spacer = 'This is the width of a ' #column 1234'
         self.col_width = self.clue_font.measure_text(spacer)
         self.num_width = self.num_font.measure_text('100.') + self.num_font.measure_text(' ')*2/3
         self.text_width = (self.col_width - self.num_width) * 0.9
