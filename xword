@@ -219,6 +219,14 @@ class Puzzle:
         self.load_file(filename)
 
     @property
+    def across(self):
+        return self.mode_clues[ACROSS]
+
+    @property
+    def down(self):
+        return self.mode_clues[DOWN]
+
+    @property
     def left_grid(self):
         return False
 
@@ -955,6 +963,7 @@ class PuzzlePrinter:
                 self.draw_box(x, y)
 
     def draw_clues(self):
+        print("%d clues" % (len(self.puzzle.down)+len(self.puzzle.across)))
         maxw = self.maxw
         size = MAX_FONT_SIZE
         saved_size = None
