@@ -688,12 +688,21 @@ class PuzzlePrinter:
         if job:
             self.job = job
 
+        self._portrait = True
+
+        self._top_margin = 0
+        self._bottom_margin = 0
+
         self._h = 0
         self._w = 0
         self._top = 0
         self._bottom = 0
         self._left = 0
         self._right = 0
+
+        self.rotate = 0
+        self.translate_x = 0
+        self.translate_y = 0
 
         self._box_size = None
         self.num_font = None
@@ -702,10 +711,43 @@ class PuzzlePrinter:
         self.config(self.job.get_config())
 
     def config(self, config):
-        w = self.units(config.get(gnomeprint.KEY_PAPER_WIDTH))
-        h = self.units(config.get(gnomeprint.KEY_PAPER_HEIGHT))
+        self._w = w = self.units(config.get(gnomeprint.KEY_PAPER_WIDTH))
+        self._h = h = self.units(config.get(gnomeprint.KEY_PAPER_HEIGHT))
 
-        if config.get(gnomeprint.KEY_PAGE_ORIENTATION) in set(['R90','R270']):
+        if config.get(gnomeprint.KEY_PAGE_ORIENTATION) == 'R90':
+            # landscape
+            self._portrait = False
+            self.rotate = 0
+            self.translate_x = 0 #self.w
+            self.translate_y = 0
+            top = self._top_margin = self.units("24 mm")
+            bottom = self._bottom_margin = self.units("12.5 mm")
+        elif config.get(gnomeprint.KEY_PAGE_ORIENTATION) == 'R180':
+            # upside down portrait
+            self._portrait = True
+            self.rotate = 180.0
+            self.translate_x = 0 - self.w
+            self.translate_y = 0 - self.h
+            top = self._top_margin = self.units("12.5 mm")
+            bottom = self._bottom_margin = self.units("24 mm")
+        elif config.get(gnomeprint.KEY_PAGE_ORIENTATION) == 'R270':
+            # upside down landscape
+            self._portrait = False
+            self.rotate = 180.0
+            self.translate_x = 0 - self.h
+            self.translate_y = 0 - self.w
+            top = self._top_margin = self.units("24 mm")
+            bottom = self._bottom_margin = self.units("0 mm")
+        else:
+            self._portrait = True
+            self.rotate = 0
+            self.translate_x = 0
+            self.translate_y = 0
+            top = self._top_margin = self.units("24 mm")
+            bottom = self._bottom_margin = self.units("12.5 mm")
+
+        if self.landscape:
+            print("landscape...")
             (w,h) = (h,w)
             left = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_BOTTOM)) / 4
             right = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_TOP)) / 4
@@ -713,8 +755,8 @@ class PuzzlePrinter:
             left = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_LEFT)) / 4
             right = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_RIGHT)) / 4
 
-        top = self.units("24 mm")
-        bottom = self.units("12.5 mm")
+        left *= 2
+        right *= 2
 
         self._w = w
         self._h = h
@@ -722,7 +764,7 @@ class PuzzlePrinter:
         self._top = self.h - top
         self._bottom = bottom
         self._left = left
-        self._right = w - right
+        self._right = self.w - right
 
         default = int(min(self.box_w, self.box_h))
         default = min(default, MAX_BOX_SIZE)
@@ -733,35 +775,26 @@ class PuzzlePrinter:
 
     @property
     def top(self):
-        if self.h > self.w:
-            return self._top
-        else:
-            return self._left
+        return self._top
 
     @property
     def bottom(self):
-        if self.h > self.w:
-            return self._bottom
-        else:
-            return self._right
+        return self._bottom
 
     @property
     def left(self):
-        if self.h > self.w:
-            return self._left
-        else:
-            return self._top
+        return self._left
 
     @property
     def right(self):
-        if self.h > self.w:
-            return self._right
-        else:
-            return self._bottom
+        return self._right
 
     @property
     def mid(self):
-        return (self.top + self.bottom) / 2
+        if self.portrait:
+            return (self.top + self.bottom) / 2
+        else:
+            return (self.left + self.right) / 2
 
     @property
     def h(self):
@@ -783,7 +816,7 @@ class PuzzlePrinter:
 
     @property
     def banner_w(self):
-        if self.h > self.w:
+        if self.portrait:
             return self.right - self.left
         else:
             return self.mid - self.left
@@ -817,19 +850,29 @@ class PuzzlePrinter:
         return self.grid_right
 
     @property
+    def portrait(self):
+        return self._portrait
+
+    @property
+    def landscape(self):
+        return not self.portrait
+
+    @property
     def box_h(self):
-        if self.h > self.w:
+        if self.portrait:
             h = self.top - self.mid - self.banner_h
         else:
             h = self.top - self.bottom - self.banner_h
-        return h / float(self.puzzle.height)
+        h /= float(self.puzzle.height)
+        return h
 
     @property
     def box_w(self):
-        if self.h > self.w:
-            return (self.right - self.left) / float(self.puzzle.width)
+        if self.portrait:
+            w = (self.right - self.left) / float(self.puzzle.width)
         else:
-            return (self.mid - self.left) / float(self.puzzle.width)
+            w = (self.mid - self.left) / float(self.puzzle.width)
+        return w
 
     @property
     def box_size(self):
@@ -945,7 +988,7 @@ class PuzzlePrinter:
 
     @property
     def banner_height(self):
-        if self.h > self.w:
+        if portrait:
             return (self._top - self._bottom) * 0.6
         else:
             return (self._right -self._left) / 2
@@ -1071,6 +1114,9 @@ class PuzzlePrinter:
 
     def draw(self, config):
         self.gpc.beginpage("1")
+
+        self.gpc.rotate(self.rotate)
+        self.gpc.translate(self.translate_x, self.translate_y)
 
         if DRAW_BOX:
             self.gpc.rect_stroked(self.left, self.bottom, self.right-self.left, self.top-self.bottom)
