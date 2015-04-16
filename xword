@@ -310,6 +310,7 @@ class Puzzle:
                         self.across_map[x, y] = number
                         if self.is_black(x+1, y):
                             self.across_clues[number] = ''
+                            is_fresh_x = False
                         else:
                             self.across_clues[number] = self.clues.pop(0)
                     else:
@@ -318,6 +319,7 @@ class Puzzle:
                         self.down_map[x, y] = number
                         if self.is_black(x, y+1): # see April 30, 2006 puzzle
                             self.down_clues[number] = ''
+                            is_fresh_y = False
                         else:
                             self.down_clues[number] = self.clues.pop(0)
                     else:
