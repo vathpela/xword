@@ -63,7 +63,8 @@ MAX_BOX_SIZE = 20
 MIN_FONT_SIZE = 6
 MAX_FONT_SIZE = 12
 
-GRID_PAD_PCT = 0.022
+#GRID_PAD_PCT = 0.022
+GRID_PAD_PCT = 0.01
 GRID_PAD = 1.0 + GRID_PAD_PCT
 
 ACROSS = 0
@@ -568,9 +569,15 @@ class ClueArea:
         self.printer = printer
         self.puzzle = printer.puzzle
 
-        self.clue_font = PrintFont('Carlito', 'Regular', font_size)
-        self.label_font = PrintFont('Carlito', 'Bold', font_size*1.25)
-        self.num_font = PrintFont('Carlito', 'Bold', font_size)
+        bold_weight = 'Bold'
+        if self.printer.plan.font_weight != 'Regular':
+            bold_weight = 'Regular'
+        self.clue_font = PrintFont(self.printer.plan.font_name,
+                        self.printer.plan.font_weight, font_size)
+        self.label_font = PrintFont(self.printer.plan.font_name, bold_weight,
+                        font_size*1.25)
+        self.num_font = PrintFont(self.printer.plan.font_name, bold_weight,
+                        font_size)
 
         self.col_num = 0
         self.clue_region = []
@@ -798,19 +805,23 @@ class ClueArea:
 class PuzzlePlan:
     def __init__(self, clue_min, clue_max, inside_cols, outside_cols,
                 font_min=MIN_FONT_SIZE, font_max=MAX_FONT_SIZE,
+                font_name="Carlito", font_weight="Regular",
                 grid_min=0.620, grid_max=0.70,
                 margin_mult=1.0, margin_add=0,
-                force_new_down_col=False):
+                force_new_down_col=False, bottom_margin_add=0):
         self._clue_min = clue_min
         self._clue_max = clue_max
         self._inside_cols = inside_cols
         self._outside_cols = outside_cols
         self._font_min = float(font_min)
         self._font_max = float(font_max)
+        self._font_name = font_name
+        self._font_weight = font_weight
         self._grid_min = float(grid_min)
         self._grid_max = float(grid_max)
         self._margin_mult = float(margin_mult)
         self._margin_add = float(margin_add)
+        self._bottom_margin_add = float(bottom_margin_add)
         self.force_new_down_col = force_new_down_col
 
     def __str__(self):
@@ -845,6 +856,14 @@ class PuzzlePlan:
         return self._font_max
 
     @property
+    def font_name(self):
+        return self._font_name
+
+    @property
+    def font_weight(self):
+        return self._font_weight
+
+    @property
     def grid_min(self):
         return self._grid_min
 
@@ -862,18 +881,22 @@ class PuzzlePlan:
 
 class PuzzlePrinter:
     plans = [
-        PuzzlePlan(0, 50, 2, 1, force_new_down_col=True),
-        PuzzlePlan(50, 85, 2, 1),
+        PuzzlePlan(0, 63, 4, 0, force_new_down_col=True, grid_max=1.2),
+        PuzzlePlan(63, 85, 2, 1),
         PuzzlePlan(85, 95, 2, 2),
         PuzzlePlan(95, 110, 3, 1),
         PuzzlePlan(110, 138, 3, 1),
         PuzzlePlan(138, 140, 3, 2, font_min=9.1, margin_add=-15,
                    grid_min=0.66),
-        PuzzlePlan(140, 145, 3, 2, font_min=9.1, margin_add=-15,
-                   grid_min=0.60),
-        PuzzlePlan(145, 150, 4, 2, font_min=8.0, margin_add=-15,
-                grid_min=0.50),
-        PuzzlePlan(150, 1000, 4, 3, grid_min=0.49),
+#        PuzzlePlan(140, 145, 3, 2, font_min=9.1, margin_add=-15,
+#                   grid_min=0.60),
+#        PuzzlePlan(145, 150, 4, 2, font_min=8.0, margin_add=-15,
+#                grid_min=0.50),
+#        PuzzlePlan(150, 1000, 4, 3, grid_min=0.49),
+        PuzzlePlan(140, 141, 3, 2, font_min=8.5, margin_add=-30, grid_min=0.625,
+                bottom_margin_add=-15)
+                #font_name='Source Sans Pro',
+                #font_weight='ExtraLight')
         ]
     def __init__(self, puzzle, job=None):
         self.puzzle = puzzle
@@ -976,12 +999,23 @@ class PuzzlePrinter:
             self._left = left
             self._right = self.paper_w - right
 
+        if self.plan._bottom_margin_add != 0:
+            bottom = self._bottom + self.plan._bottom_margin_add
+            if bottom < 0:
+                bottom = 0
+            self._bottom = self._bottom_margin = bottom
+        if self.plan._bottom_margin_add != 0:
+            self._top_margin += self.plan._bottom_margin_add
+            self._top = self.paper_h - self._top_margin
+
         default = int(min(self.box_w, self.box_h))
         default = min(default, self.max_box_size)
         default = max(default, self.min_box_size)
         self._box_size = default
-        self.num_font = PrintFont('Carlito', 'Regular', self.box_size * 0.3)
-        self.let_font = PrintFont('Carlito', 'Regular', self.box_size * 0.6)
+        self.num_font = PrintFont(self.plan.font_name, self.plan.font_weight,
+                                  self.box_size * 0.3)
+        self.let_font = PrintFont(self.plan.font_name, self.plan.font_weight,
+                                  self.box_size * 0.6)
 
         self.adjust_box()
 
@@ -1225,8 +1259,11 @@ class PuzzlePrinter:
     def draw_banner(self):
         h = self.banner_h
         size = self.banner_font_size
-        font = PrintFont('Carlito', 'Regular', size)
-        bold = PrintFont('Carlito', 'Bold', size)
+        bold_weight = 'Bold'
+        if self.plan.font_weight != 'Regular':
+            bold_weight = 'Regular'
+        font = PrintFont(self.plan.font_name, self.plan.font_weight, size)
+        bold = PrintFont(self.plan.font_name, bold_weight, size)
 
         # top line first... 
         wtitle = bold.measure_text(self.puzzle.title)
@@ -1256,7 +1293,7 @@ class PuzzlePrinter:
         right = self.grid_left + (x+1)*box_size
 
         gpc = self.gpc
-        gpc.setlinewidth(1)
+        gpc.setlinewidth(0.01)
 
         gpc.rect_stroked(left, bottom, (right-left), (top-bottom))
 
@@ -1265,13 +1302,13 @@ class PuzzlePrinter:
 
         if self.puzzle.is_circle(x, y):
             import math as math
-            gpc.setlinewidth(0.25)
+            gpc.setlinewidth(0.01)
             gpc.arcto((left+right)/2, (top+bottom)/2, box_size/2-1, 359, 0, 1)
             #gpc.arcto((left+right)/2, (top+bottom)/2, box_size/2, 90, 270, 1)
             #gpc.arcto((left+right)/2, (top+bottom)/2, box_size/2, 270, 90, 0)
             #gpc.arcto((left+right)/2, (top+bottom)/2, box_size/2, 270, 90, 1)
             gpc.stroke()
-            gpc.setlinewidth(1)
+            gpc.setlinewidth(0.01)
 
         if self.puzzle.number_rev_map.has_key((x, y)):
             gpc.setfont(self.num_font.font)
