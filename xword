@@ -60,7 +60,7 @@ TIMER_ICON = HOME_PATH + '/crossword-clock.png'
 MIN_BOX_SIZE = 13
 MAX_BOX_SIZE = 20
 
-MIN_FONT_SIZE = 6
+MIN_FONT_SIZE = 9.1
 MAX_FONT_SIZE = 12
 
 #GRID_PAD_PCT = 0.022
@@ -881,22 +881,25 @@ class PuzzlePlan:
 
 class PuzzlePrinter:
     plans = [
-        PuzzlePlan(0, 63, 4, 0, force_new_down_col=True, grid_max=1.2),
-        PuzzlePlan(63, 85, 2, 1),
-        PuzzlePlan(85, 95, 2, 2),
-        PuzzlePlan(95, 110, 3, 1),
-        PuzzlePlan(110, 138, 3, 1),
-        PuzzlePlan(138, 140, 3, 2, font_min=9.1, margin_add=-15,
-                   grid_min=0.66),
+        PuzzlePlan(0, 50, 1, 1, force_new_down_col=True, grid_max=1.2),
+        PuzzlePlan(50, 70, 2, 1, force_new_down_col=True, grid_max=1.2),
+        PuzzlePlan(70, 85, 2, 1, grid_max=1.2, margin_add=-15, grid_min=0.60, font_min=8.0),
+        PuzzlePlan(85, 95, 2, 1, grid_max=1.2),
+        PuzzlePlan(95, 110, 3, 1, margin_add=-10, grid_min=0.63, font_min=8.0),
+        PuzzlePlan(110, 130, 3, 1, margin_add=-10, grid_min=0.63, font_min=8.0),
+        PuzzlePlan(130, 138, 3, 1, margin_add=-15, grid_min=0.60, font_min=8.0),
+        PuzzlePlan(138, 140, 3, 2, margin_add=-15, grid_min=0.66),
 #        PuzzlePlan(140, 145, 3, 2, font_min=9.1, margin_add=-15,
 #                   grid_min=0.60),
 #        PuzzlePlan(145, 150, 4, 2, font_min=8.0, margin_add=-15,
 #                grid_min=0.50),
 #        PuzzlePlan(150, 1000, 4, 3, grid_min=0.49),
-        PuzzlePlan(140, 141, 3, 2, font_min=8.5, margin_add=-30, grid_min=0.625,
-                bottom_margin_add=-15)
+        PuzzlePlan(140, 145, 3, 2, font_min=8.2, margin_add=-30, grid_min=0.625,
+                bottom_margin_add=-15),
                 #font_name='Source Sans Pro',
                 #font_weight='ExtraLight')
+        PuzzlePlan(145, 150, 3, 2, font_min=8.2, margin_add=-30, grid_min=0.625,
+                bottom_margin_add=-15),
         ]
     def __init__(self, puzzle, job=None):
         self.puzzle = puzzle
@@ -985,6 +988,7 @@ class PuzzlePrinter:
         self._right = self.paper_w - right
 
         clues = (len(self.puzzle.down)+len(self.puzzle.across))
+        print("%d clues" % (clues,))
         for p in self.plans:
             if clues >= p.clue_min and clues < p.clue_max:
                 self._plan = p
