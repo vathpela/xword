@@ -1,5 +1,15 @@
 #!/usr/bin/python
- 
+# This Python file uses the following encoding: utf-8
+# vim:fileencoding=utf-8
+# stuff I'm too lazy to fix up:
+# pylint: disable=too-many-lines,missing-docstring,import-error
+# pylint: disable=wrong-import-position
+# pylint: disable=invalid-name
+# pylint: disable=unused-variable
+# pylint: disable=too-many-branches,too-many-arguments
+# pylint: disable=too-many-instance-attributes,too-many-public-methods
+# pylint: disable=too-many-statements
+#
 # Copyright (c) 2005-2006,
 #   Bill McCloskey    <bill.mccloskey@gmail.com>
 # All rights reserved.
@@ -30,6 +40,13 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+import sys
+import time
+import os
+import os.path
+import ConfigParser
+import md5
+
 import pygtk
 pygtk.require('2.0')
 import gtk
@@ -39,17 +56,11 @@ import gobject
 try:
     import gnomeprint
     import gnomeprint.ui
-    has_print = True
-except:
-    has_print = False
+    HAS_PRINT = True
+except ImportError:
+    HAS_PRINT = False
 
 import pango
-import sys
-import time
-import os, os.path
-import md5
-import pickle
-import ConfigParser
 
 HOME_PATH = '/usr/share/xword-1.0'
 CHECK_ICON = HOME_PATH + '/crossword-check.png'
@@ -85,7 +96,7 @@ MENU_SKIP = 10
 
 DRAW_BOX = False
 
-layouts = [
+LAYOUTS = [
     ('Only Puzzle', 'puzzle'),
     ('Right Side', ('H', 'puzzle', 550, ('V', 'across', 250, 'down'))),
     ('Left Side', ('H', ('V', 'across', 250, 'down'), 200, 'puzzle')),
@@ -104,13 +115,13 @@ def time_str(t):
 
 class BinaryFile:
     def __init__(self, filename=None):
-        f = file(filename, 'rb')
+        f = open(filename, 'rb')
         self.data = list(f.read())
         f.close()
         self.index = 0
 
     def save(self, filename):
-        f = file(filename, 'wb+')
+        f = open(filename, 'wb+')
         f.write(''.join(self.data))
         f.close()
 
@@ -132,16 +143,21 @@ class BinaryFile:
     def read_string(self):
         if self.index == len(self.data):
             return ''
-        s = ''
+        s = u''
         c = self.read_char()
+
+        replacements = {
+            u'…':'...',
+        }
         while ord(c) is not 0 and self.index < len(self.data):
+            if ord(c) > 128 and ord(c) < 256:
+                c = c.decode('iso_8859-1')
+            elif c in replacements:
+                c = replacements[c]
             s += c
             c = self.read_char()
 
-        result = s
-        ellipsis_char = 133
-        result = result.replace(chr(ellipsis_char), '...')
-        result = unicode(result, 'iso_8859-1')
+        result = s.encode('iso_8859-1')
         return result
 
     def hashcode(self):
@@ -155,10 +171,11 @@ class PersistentPuzzle:
         self.errors = {}
         self.clock = 0
 
-    def get_size(self, m):
+    @property
+    def size(self):
         width = 0
         height = 0
-        for (x, y) in m.keys():
+        for (x, y) in self.responses.keys():
             if x > width:
                 width = x
             if y > height:
@@ -169,7 +186,7 @@ class PersistentPuzzle:
         return (width, height)
 
     def to_binary(self):
-        (width, height) = self.get_size(self.responses)
+        (width, height) = self.size
         bin1 = [' ']*width*height
         bin2 = [' ']*width*height
 
@@ -183,27 +200,27 @@ class PersistentPuzzle:
             index = y * width + x
             bin2[index] = chr(self.errors[x, y])
 
-        bin = ''.join(bin1 + bin2)
-        return '%d %d %d %s' % (width, height, int(self.clock), bin)
+        wholebin = ''.join(bin1 + bin2)
+        return '%d %d %d %s' % (width, height, int(self.clock), wholebin)
 
-    def get_int(self, s, pos):
-        pos0 = pos
-        while pos < len(s) and s[pos].isdigit():
-            pos += 1
-        return (int(s[pos0:pos]), pos)
+    def from_binary(self, binary):
+        def get_int(s, pos):
+            pos0 = pos
+            while pos < len(s) and s[pos].isdigit():
+                pos += 1
+            return (int(s[pos0:pos]), pos)
 
-    def from_binary(self, bin):
         pos = 0
-        (width, pos) = self.get_int(bin, pos)
+        (width, pos) = get_int(binary, pos)
         pos += 1
-        (height, pos) = self.get_int(bin, pos)
+        (height, pos) = get_int(binary, pos)
         pos += 1
-        (self.clock, pos) = self.get_int(bin, pos)
+        (self.clock, pos) = get_int(binary, pos)
         pos += 1
 
         count = width*height
-        bin1 = bin[pos:pos+count]
-        bin2 = bin[pos+count:]
+        binary1 = binary[pos:pos+count]
+        binary2 = binary[pos+count:]
 
         self.responses = {}
         self.errors = {}
@@ -211,15 +228,29 @@ class PersistentPuzzle:
         i = 0
         for y in range(height):
             for x in range(width):
-                if bin1[i] == chr(0):
+                if binary1[i] == chr(0):
                     self.responses[x, y] = ''
                 else:
-                    self.responses[x, y] = bin1[i]
-                self.errors[x, y] = ord(bin2[i])
+                    self.responses[x, y] = binary1[i]
+                self.errors[x, y] = ord(binary2[i])
                 i += 1
 
 class Puzzle:
     def __init__(self, filename):
+        self.across_clues = {}
+        self.down_clues = {}
+        self.across_map = {}
+        self.down_map = {}
+        self.number_map = {}
+        self.number_rev_map = {}
+        self.mode_maps = [self.across_map, self.down_map]
+        self.mode_clues = [self.across_clues, self.down_clues]
+        self.is_across = {}
+        self.is_down = {}
+        self.circles = {}
+        self.rebus = {}
+        self.max_number = -1
+
         self.load_file(filename)
 
     @property
@@ -269,6 +300,7 @@ class Puzzle:
         self.pub = None
         self.title = massage(f.read_string())
         import re
+        # pylint: disable=line-too-long,bare-except
         r = re.compile("(.*, [SMTWFabcdefghijklmnopqrstuvwxyz]+, [JFMASONDabcdefghijklmnopqrstuvwxyz]+ [0-9]+, [0-9]{4}) (.*)")
         m = r.match(self.title)
         try:
@@ -295,28 +327,16 @@ class Puzzle:
         # self.notebook = massage(f.read_string())
 
         while len(f.data) > f.index:
-                #code = f.readbytes(4)
-                #count = f.read_byte() + 256*f.read_byte()
-                #junk = f.read_bytes(2)
-                #data = f.read_bytes(count)
-                #zero = f.read_byte()
-                code = f.data[f.index:f.index+4]
-                f.index += 4
-                self.process_section(code, f)
+            #code = f.readbytes(4)
+            #count = f.read_byte() + 256*f.read_byte()
+            #junk = f.read_bytes(2)
+            #data = f.read_bytes(count)
+            #zero = f.read_byte()
+            code = f.data[f.index:f.index+4]
+            f.index += 4
+            self.process_section(code, f)
 
     def setup(self):
-        self.across_clues = {}
-        self.down_clues = {}
-        self.across_map = {}
-        self.down_map = {}
-        self.number_map = {}
-        self.number_rev_map = {}
-        self.mode_maps = [self.across_map, self.down_map]
-        self.mode_clues = [self.across_clues, self.down_clues]
-        self.is_across = {}
-        self.is_down = {}
-        self.circles = {}
-        self.rebus = {}
         number = 1
         for y in range(self.height):
             for x in range(self.width):
@@ -359,7 +379,7 @@ class Puzzle:
 
     def process_section(self, code, f):
         #print("processing %s" % (code,))
-        if code == ['G','E','X','T']:
+        if code == ['G', 'E', 'X', 'T']:
             count = ord(f.data[f.index]) + 256 * ord(f.data[f.index+1])
             f.index += 2
             junk = f.data[f.index:f.index+1]
@@ -367,7 +387,7 @@ class Puzzle:
             data = f.data[f.index:f.index+count]
             f.index += count
             zero = f.data[f.index]
-            f.index+=1
+            f.index += 1
 
             index = 0
             for y in range(self.height):
@@ -375,7 +395,7 @@ class Puzzle:
                     if ord(data[index]) == 0x80:
                         self.circles[x, y] = True
                     index += 1
-        elif code == ['G','R','B','S']:
+        elif code == ['G', 'R', 'B', 'S']:
             count = ord(f.data[f.index]) + 256 * ord(f.data[f.index+1])
             f.index += 2
             junk = f.data[f.index:f.index+1]
@@ -383,16 +403,16 @@ class Puzzle:
             data = f.data[f.index:f.index+count]
             f.index += count
             zero = f.data[f.index]
-            f.index+=1
+            f.index += 1
 
             index = 0
             for y in range(self.height):
                 for x in range(self.width):
                     self.rebus[x, y] = ord(data[index])
                     index += 1
-        elif code == ['R','T','B','L']:
+        elif code == ['R', 'T', 'B', 'L']:
             f.index += 7
-        elif code == ['W','E','N','S']:
+        elif code == ['W', 'E', 'N', 'S']:
             f.index += 2
 
     def hashcode(self):
@@ -428,7 +448,7 @@ class Puzzle:
         return self.responses.get((x, y), '.') == '.'
 
     def is_circle(self, x, y):
-        return self.circles.has_key((x, y))
+        return (x, y) in self.circles
 
     def clue(self, x, y, mode):
         if mode is ACROSS:
@@ -457,8 +477,7 @@ class Puzzle:
 
         if self.is_black(x, y):
             return ((xo, yo), True)
-        else:
-            return ((x, y), False)
+        return ((x, y), False)
 
     def find_blank_cell_recursive(self, x, y, mode, incr):
         if self.responses[x, y] == '' or self.errors[x, y] == MISTAKE:
@@ -467,15 +486,13 @@ class Puzzle:
             ((x, y), hit) = self.next_cell(x, y, mode, incr, False)
             if hit:
                 return None
-            else:
-                return self.find_blank_cell_recursive(x, y, mode, incr)
+            return self.find_blank_cell_recursive(x, y, mode, incr)
 
     def find_blank_cell(self, x, y, mode, incr):
         r = self.find_blank_cell_recursive(x, y, mode, incr)
-        if r == None:
+        if r is None:
             return (x, y)
-        else:
-            return r
+        return r
 
     def is_cell_correct(self, x, y):
         return self.responses[x, y] == self.answers[x, y]
@@ -491,7 +508,7 @@ class Puzzle:
         n = self.mode_maps[mode][x, y]
         while True:
             n += incr
-            if not self.number_map.has_key(n):
+            if not n in self.number_map:
                 return 0
             if mode == ACROSS and self.is_across[n]:
                 break
@@ -538,7 +555,8 @@ class ClueRegion:
         self.y = self._top - y
 
     def __str__(self):
-        return "ClueRegion(%d,%d,%d,%d,x=%f,y=%f)" % (self.top, self.bottom, self.left, self.right, self.x, self.y)
+        return "ClueRegion(%d,%d,%d,%d,x=%f,y=%f)" % (
+            self.top, self.bottom, self.left, self.right, self.x, self.y)
 
     @property
     def h(self):
@@ -573,11 +591,11 @@ class ClueArea:
         if self.printer.plan.font_weight != 'Regular':
             bold_weight = 'Regular'
         self.clue_font = PrintFont(self.printer.plan.font_name,
-                        self.printer.plan.font_weight, font_size)
+                                   self.printer.plan.font_weight, font_size)
         self.label_font = PrintFont(self.printer.plan.font_name, bold_weight,
-                        font_size*1.25)
+                                    font_size*1.25)
         self.num_font = PrintFont(self.printer.plan.font_name, bold_weight,
-                        font_size)
+                                  font_size)
 
         self.col_num = 0
         self.clue_region = []
@@ -592,7 +610,8 @@ class ClueArea:
             self.col_num = c
             self._cr = c
             if self.printer.tall_column(c):
-                #print("adding tall column %d (width %f grid_w: %f)" % (self.col_num, self.col_width, self.printer.grid_w))
+                #print("adding tall column %d (width %f grid_w: %f)" % (
+                #    self.col_num, self.col_width, self.printer.grid_w))
                 top = self.printer.grid_area_top
                 bottom = self.printer.bottom
                 right = left + self.col_width
@@ -600,7 +619,8 @@ class ClueArea:
                 #print("Adding %s" % (cr,))
                 self.clue_region.append(cr)
             else:
-                #print("adding short column %d (width %f grid_w: %f, w:)" % (self.col_num, self.col_width, self.printer.grid_w))
+                #print("adding short column %d (width %f grid_w: %f, w:)" % (
+                #    self.col_num, self.col_width, self.printer.grid_w))
                 right = left + self.col_width
                 if left <= self.printer.grid_area_left and right >= self.printer.grid_area_left:
                     left = self.printer.grid_area_left
@@ -663,8 +683,10 @@ class ClueArea:
         if self._cr == self.printer.columns:
             left = self.printer.right
             right = self.printer.right + self.printer.col_width
-            for i in range(0,10):
-                cr = ClueRegion(self.printer.top, self.printer.bottom, left, right, self.clue_font.size)
+            for i in range(0, 10):
+                cr = ClueRegion(self.printer.top, self.printer.bottom,
+                                left, right,
+                                self.clue_font.size)
                 self.clue_region.append(cr)
                 left += self.printer.col_width
                 right += self.printer.col_width
@@ -672,16 +694,15 @@ class ClueArea:
     def open_group(self):
         if self.cr.y < self.cr.bottom:
             self.nextcol()
-        if len(self.puzzle.down_clues) < 25 and self.col_num > 0 and self.cr.y < (self.cr.bottom * 5):
+        if len(self.puzzle.down_clues) < 25 \
+           and self.col_num > 0 \
+           and self.cr.y < (self.cr.bottom * 5):
             self.nextcol()
             self.add_space(1.8)
 
 
-    def close_group(self, force=False):
-        if self.cr.y < self.cr.bottom:
-            return False
-        else:
-            return True
+    def close_group(self):
+        return self.cr.y >= self.cr.bottom
 
     def draw(self, gpc):
         for (x, y, font, text, rj) in self.items:
@@ -692,19 +713,37 @@ class ClueArea:
             gpc.show(text)
         if DRAW_BOX:
             for cr in self.clue_region:
-                self.printer.gpc.rect_stroked(cr.left, cr.bottom, cr.right-cr.left, cr.top-cr.bottom)
-            self.printer.gpc.rect_stroked(self.printer.grid_area_left, self.printer.grid_area_bottom, self.printer.grid_area_right-self.printer.grid_area_left,self.printer.grid_area_top - self.printer.grid_area_bottom)
-            self.printer.gpc.rect_stroked(self.printer.grid_left, self.printer.grid_bottom, self.printer.grid_right-self.printer.grid_left,self.printer.grid_top - self.printer.grid_bottom)
+                self.printer.gpc.rect_stroked(cr.left, cr.bottom,
+                                              cr.right-cr.left,
+                                              cr.top-cr.bottom)
+
+            printer_grid_width = self.printer.grid_area_right \
+                                 - self.printer.grid_area_left
+            printer_grid_height = self.printer.grid_area_top \
+                                  - self.printer.grid_area_bottom
+            self.printer.gpc.rect_stroked(self.printer.grid_area_left,
+                                          self.printer.grid_area_bottom,
+                                          printer_grid_width,
+                                          printer_grid_height)
+
+            printer_grid_width = self.printer.grid_right \
+                                 - self.printer.grid_left
+            printer_grid_height = self.printer.grid_top \
+                                  - self.printer.grid_bottom
+            self.printer.gpc.rect_stroked(self.printer.grid_left,
+                                          self.printer.grid_bottom,
+                                          printer_grid_width,
+                                          printer_grid_height)
 
     def add_wrapped_text(self, width, font, text, prefix):
         words = text.split(' ')
         lines = []
         new_column = False
-        while len(words) > 0:
+        while words:
             w = 0.0
             line = []
-            while len(words) > 0 and w < width:
-                if len(line) > 0:
+            while words and w < width:
+                if line:
                     w += font.measure_text(' ')
                 word = words.pop(0)
                 line.append(word)
@@ -739,7 +778,7 @@ class ClueArea:
             self.add_item(self.cr.x+self.num_width, self.cr.y, font, s)
             self.cr.y -= font.size
             if self.cr.y < 0:
-                raise RuntimeError, "invalid y %f" % (self.cr.y,)
+                raise RuntimeError("invalid y %f" % (self.cr.y,))
 
     def add_space(self, pct):
         self.cr.y -= self.clue_font.size * pct
@@ -783,7 +822,9 @@ class ClueArea:
                         self.add_label(name)
                         first = False
 
-                    self.add_wrapped_text(self.text_width, self.clue_font, clue, (self.num_font, num))
+                    self.add_wrapped_text(self.text_width,
+                                          self.clue_font, clue,
+                                          (self.num_font, num))
 
                     if self.close_group():
                         break
@@ -804,11 +845,11 @@ class ClueArea:
 
 class PuzzlePlan:
     def __init__(self, clue_min, clue_max, inside_cols, outside_cols,
-                font_min=MIN_FONT_SIZE, font_max=MAX_FONT_SIZE,
-                font_name="Carlito", font_weight="Regular",
-                grid_min=0.620, grid_max=0.70,
-                margin_mult=1.0, margin_add=0,
-                force_new_down_col=False, bottom_margin_add=0):
+                 font_min=MIN_FONT_SIZE, font_max=MAX_FONT_SIZE,
+                 font_name="Carlito", font_weight="Regular",
+                 grid_min=0.620, grid_max=0.70,
+                 margin_mult=1.0, margin_add=0,
+                 force_new_down_col=False, bottom_margin_add=0):
         self._clue_min = clue_min
         self._clue_max = clue_max
         self._inside_cols = inside_cols
@@ -821,11 +862,16 @@ class PuzzlePlan:
         self._grid_max = float(grid_max)
         self._margin_mult = float(margin_mult)
         self._margin_add = float(margin_add)
-        self._bottom_margin_add = float(bottom_margin_add)
+        self.bottom_margin_add = float(bottom_margin_add)
         self.force_new_down_col = force_new_down_col
+        self.ignore = False
 
     def __str__(self):
-        return "clues[%d:%d] cols[%d:%d] font[%f:%f] grid[%f:%f]" % (self.clue_min, self.clue_max, self.inside_cols, self.outside_cols, self.font_min, self.font_max, self.grid_min, self.grid_max)
+        return "clues[%d:%d] cols[%d:%d] font[%f:%f] grid[%f:%f]" % (
+            self.clue_min, self.clue_max,
+            self.inside_cols, self.outside_cols,
+            self.font_min, self.font_max,
+            self.grid_min, self.grid_max)
 
     @property
     def clue_min(self):
@@ -879,6 +925,13 @@ class PuzzlePlan:
     def margin_add(self):
         return self._margin_add
 
+class SkipPuzzlePlan(PuzzlePlan):
+    """ A puzzle plan to ignore """
+
+    def __init__(self, *args, **kwargs):
+        PuzzlePlan.__init__(self, *args, **kwargs)
+        self.ignore = True
+
 class PuzzlePrinter:
     plans = [
         PuzzlePlan(0, 50, 1, 1, force_new_down_col=True, grid_max=1.2),
@@ -889,23 +942,21 @@ class PuzzlePrinter:
         PuzzlePlan(110, 130, 3, 1, margin_add=-10, grid_min=0.63, font_min=8.0),
         PuzzlePlan(130, 138, 3, 1, margin_add=-15, grid_min=0.60, font_min=8.0),
         PuzzlePlan(138, 140, 3, 2, margin_add=-15, grid_min=0.66),
-#        PuzzlePlan(140, 145, 3, 2, font_min=9.1, margin_add=-15,
-#                   grid_min=0.60),
-#        PuzzlePlan(145, 150, 4, 2, font_min=8.0, margin_add=-15,
-#                grid_min=0.50),
-#        PuzzlePlan(150, 1000, 4, 3, grid_min=0.49),
+        SkipPuzzlePlan(140, 145, 3, 2, font_min=9.1, margin_add=-15, grid_min=0.60),
+        SkipPuzzlePlan(145, 150, 4, 2, font_min=8.0, margin_add=-15, grid_min=0.50),
+        SkipPuzzlePlan(150, 1000, 4, 3, grid_min=0.49),
         PuzzlePlan(140, 145, 3, 2, font_min=8.2, margin_add=-30, grid_min=0.625,
-                bottom_margin_add=-15),
-                #font_name='Source Sans Pro',
-                #font_weight='ExtraLight')
+                   bottom_margin_add=-15),
         PuzzlePlan(145, 150, 3, 2, font_min=8.2, margin_add=-30, grid_min=0.625,
-                bottom_margin_add=-15),
+                   bottom_margin_add=-15),
         ]
+
     def __init__(self, puzzle, job=None):
         self.puzzle = puzzle
         self.job = gnomeprint.Job(gnomeprint.config_default())
         if job:
             self.job = job
+        self.gpc = None
 
         self._portrait = True
 
@@ -969,7 +1020,7 @@ class PuzzlePrinter:
 
         if self.landscape:
             print("landscape...")
-            (w,h) = (h,w)
+            (w, h) = (h, w)
             left = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_BOTTOM)) / 4
             right = self.units(config.get(gnomeprint.KEY_PAGE_MARGIN_TOP)) / 4
         else:
@@ -990,11 +1041,13 @@ class PuzzlePrinter:
         clues = (len(self.puzzle.down)+len(self.puzzle.across))
         print("%d clues" % (clues,))
         for p in self.plans:
+            if p.ignore:
+                continue
             if clues >= p.clue_min and clues < p.clue_max:
                 self._plan = p
                 break
         if self._plan is None:
-            raise RuntimeError, "No plan for puzzle with %d clues" % (clues,)
+            raise RuntimeError("No plan for puzzle with %d clues" % (clues,))
         print("plan: %s" % (self.plan))
 
         if self.plan.margin_mult != 1.0 or self.plan.margin_add != 0:
@@ -1003,13 +1056,13 @@ class PuzzlePrinter:
             self._left = left
             self._right = self.paper_w - right
 
-        if self.plan._bottom_margin_add != 0:
-            bottom = self._bottom + self.plan._bottom_margin_add
+        if self.plan.bottom_margin_add != 0:
+            bottom = self._bottom + self.plan.bottom_margin_add
             if bottom < 0:
                 bottom = 0
             self._bottom = self._bottom_margin = bottom
-        if self.plan._bottom_margin_add != 0:
-            self._top_margin += self.plan._bottom_margin_add
+        if self.plan.bottom_margin_add != 0:
+            self._top_margin += self.plan.bottom_margin_add
             self._top = self.paper_h - self._top_margin
 
         default = int(min(self.box_w, self.box_h))
@@ -1112,8 +1165,7 @@ class PuzzlePrinter:
     def mid(self):
         if self.portrait:
             return (self.top + self.bottom) / 2
-        else:
-            return (self.left + self.right) / 2
+        return (self.left + self.right) / 2
 
     @property
     def paper_h(self):
@@ -1144,8 +1196,7 @@ class PuzzlePrinter:
     def banner_w(self):
         if self.portrait:
             return self.right - self.left
-        else:
-            return self.mid - self.left
+        return self.mid - self.left
 
     @property
     def banner_top(self):
@@ -1224,8 +1275,7 @@ class PuzzlePrinter:
     def grid_area_left(self):
         if self.puzzle.left_grid:
             return self.left
-        else:
-            return self.grid_area_right - self.puzzle.width*self.box_size
+        return self.grid_area_right - self.puzzle.width*self.box_size
 
     @property
     def grid_left(self):
@@ -1235,8 +1285,7 @@ class PuzzlePrinter:
     def grid_area_right(self):
         if self.puzzle.left_grid:
             return self.grid_area_left + self.puzzle.width*self.box_size
-        else:
-            return self.right
+        return self.right
 
     @property
     def grid_right(self):
@@ -1269,7 +1318,7 @@ class PuzzlePrinter:
         font = PrintFont(self.plan.font_name, self.plan.font_weight, size)
         bold = PrintFont(self.plan.font_name, bold_weight, size)
 
-        # top line first... 
+        # top line first...
         wtitle = bold.measure_text(self.puzzle.title)
         y0 = self.banner_top - h/2 + 1
         x0 = self.banner_right - wtitle
@@ -1351,6 +1400,7 @@ class PuzzlePrinter:
                 self.draw_box(x, y)
 
     def draw_clues(self):
+        # pylint: disable=too-many-locals
         print("%d clues" % (len(self.puzzle.down)+len(self.puzzle.across)))
         size = self.plan.font_max
         saved_size = None
@@ -1431,19 +1481,32 @@ class PuzzlePrinter:
             self._right -= zz
             #print("Trying width %f" % (self.right - self.left,))
             area = ClueArea(self, size)
-            if (area.col_num != prev_cols and area.col_num > area.columns) \
-                    or (self.maxw < area.width) \
-                    or (prev_col_0_top > area.clue_region[0].top + 1) \
-                    or (prev_col_0_top < area.clue_region[0].top - 1) \
-                    or self.right - self.left < self.min_width:
+            bad_parameters = False
+            if area.col_num != prev_cols and area.col_num > area.columns:
+                bad_parameters = True
+
+            if self.maxw < area.width:
+                bad_parameters = True
+
+            if prev_col_0_top > area.clue_region[0].top + 1:
+                bad_parameters = True
+
+            if prev_col_0_top < area.clue_region[0].top - 1:
+                bad_parameters = True
+
+            if self.right - self.left < self.min_width:
+                bad_parameters = True
+
+            if bad_parameters:
                 if area.col_num != prev_cols and area.col_num > area.columns:
-                    print("bad columns %d %d" % (area.col_num,prev_cols))
+                    print("bad columns %d %d" % (area.col_num, prev_cols))
                 elif self.maxw < area.width:
                     #print("bad width: %f %f" % (self.maxw, area.width))
                     pass
                 elif prev_col_0_top > area.clue_region[0].top:
                     print("bad top: %f %f" % (prev_col_0_top, area.clue_region[0].top))
-                #print("Adjusting width from %f to %f (factor %f)" % (self.maxw, self.maxw - zz*2, yy))
+                #print("Adjusting width from %f to %f (factor %f)" % (
+                #    self.maxw, self.maxw - zz*2, yy))
                 #xx = yy - (100.0/(n*100))/(yy*100)
                 xx = yy * 0.95
                 prev_yy = yy
@@ -1466,6 +1529,7 @@ class PuzzlePrinter:
         area.draw(self.gpc)
 
     def units(self, length):
+        # pylint: disable=no-self-use
         i = 0
         while i < len(length) and (length[i].isdigit() or length[i] == '.'):
             i += 1
@@ -1476,19 +1540,21 @@ class PuzzlePrinter:
             return float(num)
 
         u = gnomeprint.unit_get_by_abbreviation(units)
-        if u == None:
-            print 'Bad unit:', length
+        if u is None:
+            print('Bad unit: %s' % (length,))
             return 0.0
         return float(num) * u.unittobase
 
-    def draw(self, config):
+    def draw(self):
         self.gpc.beginpage("1")
 
         self.gpc.rotate(self.rotate)
         self.gpc.translate(self.translate_x, self.translate_y)
 
         if DRAW_BOX:
-            self.gpc.rect_stroked(self.left, self.bottom, self.right-self.left, self.top-self.bottom)
+            self.gpc.rect_stroked(self.left, self.bottom,
+                                  self.right-self.left,
+                                  self.top-self.bottom)
 
         self.draw_clues()
         self.draw_grid()
@@ -1498,7 +1564,7 @@ class PuzzlePrinter:
         job = gnomeprint.Job(config)
         self.gpc = job.get_context()
         job.close()
-        self.draw(config)
+        self.draw()
         w = gnomeprint.ui.JobPreview(job, 'Print Preview')
         w.set_property('allow-grow', 1)
         w.set_property('allow-shrink', 1)
@@ -1518,7 +1584,7 @@ class PuzzlePrinter:
             #self.__init__(self.puzzle, job)
             dialog.destroy()
             self.gpc = job.get_context()
-            self.draw(config)
+            self.draw()
             job.close()
             job.print_()
 
@@ -1546,6 +1612,20 @@ class PuzzleWidget:
         self.widget = self.sw
         self.set_puzzle(puzzle, control)
 
+        self.box_size = None
+        self.width = None
+        self.height = None
+        self.x = None
+        self.y = None
+        self.white = None
+        self.black = None
+        self.red = None
+        self.gray = None
+        self.num_font = -1
+        self.let_font = None
+
+        self.gc = None
+
     def set_puzzle(self, puzzle, control):
         self.puzzle = puzzle
         self.control = control
@@ -1560,6 +1640,7 @@ class PuzzleWidget:
         self.area.queue_draw_area(0, 0, 32768, 32768)
 
     def configure_event(self, area, event):
+        # pylint: disable=unused-argument
         width, height = event.width, event.height
 
         if self.puzzle:
@@ -1579,6 +1660,7 @@ class PuzzleWidget:
             self.y = 0
 
     def expose_event(self, area, event):
+        # pylint: disable=unused-argument
         if self.puzzle:
             self.draw_grid()
         else:
@@ -1600,7 +1682,7 @@ class PuzzleWidget:
         self.num_font = pango.FontDescription('Carlito %d' % num_size)
         self.let_font = pango.FontDescription('Carlito %d' % let_size)
 
-        self.gc = view.new_gc(foreground = self.white, background = self.white)
+        self.gc = view.new_gc(foreground=self.white, background=self.white)
         view.draw_rectangle(self.gc, True, self.x, self.y,
                             self.width, self.height)
 
@@ -1708,19 +1790,26 @@ class ClueWidget:
 
         self.widget = self.area
 
+        self.width = None
+        self.height = None
+        self.black = None
+        self.gc = None
+
     def set_controller(self, control):
         self.control = control
         self.update()
 
     def configure_event(self, area, event):
+        # pylint: disable=unused-argument
         self.width, self.height = event.width, event.height
         self.pango.set_width(self.width * pango.SCALE)
 
     def expose_event(self, area, event):
+        # pylint: disable=unused-argument
         view = self.area.window
         cm = view.get_colormap()
         self.black = cm.alloc_color('black')
-        self.gc = view.new_gc(foreground = self.black)
+        self.gc = view.new_gc(foreground=self.black)
 
         size = 14
         while True:
@@ -1815,7 +1904,7 @@ class PuzzleController:
             self.do_update('down-update', self.puzzle.number(x, y, DOWN))
 
     def select_word(self, mode, n):
-        if mode <> self.mode:
+        if mode != self.mode:
             self.switch_mode()
         (x, y) = self.puzzle.number_map[n]
         (x, y) = self.puzzle.find_blank_cell(x, y, mode, 1)
@@ -1834,8 +1923,8 @@ class PuzzleController:
     def erase_letter(self):
         self.set_letter('')
 
-    def move(self, dir, amt, skip_black=True):
-        if self.mode == dir:
+    def move(self, orientation, amt, skip_black=True):
+        if self.mode == orientation:
             ((x, y), _) = self.puzzle.next_cell(self.x, self.y,
                                                 self.mode, amt, skip_black)
             self.move_to(x, y)
@@ -1875,7 +1964,7 @@ class PuzzleController:
         correct = True
         for (x, y) in self.selection:
             if not self.puzzle.is_cell_correct(x, y):
-                if self.puzzle.responses[x, y] <> '':
+                if self.puzzle.responses[x, y] != '':
                     self.puzzle.errors[x, y] = MISTAKE
                     correct = False
                     self.do_update('box-update', x, y)
@@ -1886,7 +1975,7 @@ class PuzzleController:
         correct = True
         for (x, y) in self.puzzle.responses.keys():
             if not self.puzzle.is_cell_correct(x, y):
-                if self.puzzle.responses[x, y] <> '':
+                if self.puzzle.responses[x, y] != '':
                     self.puzzle.errors[x, y] = MISTAKE
                     correct = False
                     self.do_update('box-update', x, y)
@@ -1904,10 +1993,10 @@ class PuzzleController:
             self.do_update('puzzle-finished')
 
     def is_selected(self, x, y):
-        return ((x, y) in self.selection)
+        return (x, y) in self.selection
 
     def is_main_selection(self, x, y):
-        return (x == self.x and y == self.y)
+        return x == self.x and y == self.y
 
     def get_selected_word(self):
         return self.puzzle.clue(self.x, self.y, self.mode)
@@ -1921,6 +2010,7 @@ class PuzzleController:
         return clues
 
 class DummyController:
+    # pylint: disable=no-self-use,unused-argument
     def __init__(self):
         pass
 
@@ -1945,7 +2035,7 @@ class DummyController:
     def erase_letter(self):
         pass
 
-    def move(self, dir, amt):
+    def move(self, orientation, amt):
         pass
 
     def back_space(self):
@@ -1982,6 +2072,7 @@ class PuzzleWindow:
     def __init__(self, puzzle):
         self.clock_time = 0.0
         self.clock_running = False
+        self.clock_start = 0
 
         self.win = None
         self.set_puzzle(puzzle)
@@ -1995,7 +2086,7 @@ class PuzzleWindow:
         self.layout = 0
         self.window_size = (900, 600)
         self.maximized = False
-        self.positions = layouts[self.layout][1]
+        self.positions = LAYOUTS[self.layout][1]
         self.default_loc = None
 
         title = 'Crossword Puzzle'
@@ -2089,17 +2180,18 @@ class PuzzleWindow:
         self.idle_event()
 
     def do_save_file(self, fname):
-	self.default_loc = os.path.dirname(fname)
+        self.default_loc = os.path.dirname(fname)
         self.puzzle.save(fname)
 
     def get_puzzle_file(self, puzzle):
-        dir = os.path.expanduser('~/.crossword_puzzles')
+        # pylint: disable=no-self-use
+        directory = os.path.expanduser('~/.crossword_puzzles')
         try:
-            os.mkdir(dir)
+            os.mkdir(directory)
         except OSError:
             pass
 
-        return dir + '/' + puzzle.hashcode()
+        return directory + '/' + puzzle.hashcode()
 
     def load_puzzle(self, fname, f):
         pp = PersistentPuzzle()
@@ -2109,7 +2201,7 @@ class PuzzleWindow:
             self.puzzle.responses = pp.responses
             self.puzzle.errors = pp.errors
             self.clock_time = pp.clock
-        except:
+        except IOError:
             self.notify('The saved puzzle is corrupted. It will not be used.')
             os.remove(fname)
 
@@ -2125,7 +2217,7 @@ class PuzzleWindow:
         fname = self.get_puzzle_file(puzzle)
 
         try:
-            f = file(fname, 'r')
+            f = open(fname, 'r')
         except IOError:
             return
 
@@ -2148,7 +2240,7 @@ class PuzzleWindow:
         pp.clock = self.clock_time
 
         fname = self.get_puzzle_file(self.puzzle)
-        f = file(fname, 'w+')
+        f = open(fname, 'w+')
         f.write(pp.to_binary())
         f.close()
 
@@ -2210,7 +2302,7 @@ class PuzzleWindow:
         self.load_list(DOWN)
 
     def generate_layout(self, layout):
-        if type(layout) == str:
+        if isinstance(layout, str):
             return self.widgets[layout]
         else:
             if layout[0] == 'H':
@@ -2240,7 +2332,7 @@ class PuzzleWindow:
 
         self.cur_layout = None
         self.layout = index
-        self.positions = layouts[index][1]
+        self.positions = LAYOUTS[index][1]
         self.cur_layout = self.generate_layout(self.positions)
         self.vbox.pack_start(self.cur_layout, True, True, 0)
 
@@ -2267,10 +2359,12 @@ class PuzzleWindow:
                     return name
 
     def state_event(self, w, event):
+        # pylint: disable=unused-argument
         state = int(event.new_window_state)
-        self.maximized = (state & gtk.gdk.WINDOW_STATE_MAXIMIZED) <> 0
+        self.maximized = (state & gtk.gdk.WINDOW_STATE_MAXIMIZED) != 0
 
     def resize_window(self, widget, allocation):
+        # pylint: disable=unused-argument
         if not self.maximized:
             self.window_size = self.win.get_size()
 
@@ -2291,10 +2385,10 @@ class PuzzleWindow:
 
         def create_menu_item(label, action, key=None, klass=gtk.MenuItem,
                              active=False):
-            return create_item({ 'label': label }, action, key, klass, active)
+            return create_item({'label': label}, action, key, klass, active)
 
         def create_radio_item(label, action, group, active):
-            return create_item({ 'label': label, 'group': group },
+            return create_item({'label': label, 'group': group},
                                action, None, gtk.RadioMenuItem, active)
 
         def append(menu, name, item):
@@ -2333,7 +2427,7 @@ class PuzzleWindow:
 
         g = None
         i = -1
-        for (name, layout) in layouts:
+        for (name, layout) in LAYOUTS:
             item = create_radio_item(name, i, g, -(i+1) == self.layout)
             menu.append(item)
             if not g:
@@ -2345,6 +2439,7 @@ class PuzzleWindow:
         return menubar
 
     def menu_selected(self, item, action):
+        # pylint: disable=unused-argument
         if action == MENU_QUIT:
             self.exit()
         elif action == MENU_CLOSE:
@@ -2359,7 +2454,7 @@ class PuzzleWindow:
             self.print_puzzle()
         elif action < 0:
             layout = -(action+1)
-            if layout <> self.layout:
+            if layout != self.layout:
                 self.set_layout(layout)
 
     def create_toolbar_item(self, label, icon, tooltip, is_toggle=False):
@@ -2372,7 +2467,7 @@ class PuzzleWindow:
         else:
             img = None
 
-        if gtk.pygtk_version >= (2,3,90):
+        if gtk.pygtk_version >= (2, 3, 90):
             if is_toggle:
                 item = gtk.ToggleToolButton()
                 item.set_label(label)
@@ -2396,7 +2491,7 @@ class PuzzleWindow:
             return x
 
     def create_separator_toolitem(self):
-        if gtk.pygtk_version >= (2,3,90):
+        if gtk.pygtk_version >= (2, 3, 90):
             item = gtk.SeparatorToolItem()
             item.set_draw(False)
             item.set_expand(True)
@@ -2460,18 +2555,19 @@ class PuzzleWindow:
         self.trees[mode].set_model(store)
 
     def select_changed(self, tree, path, column, mode):
+        # pylint: disable=unused-argument
         store = tree.get_model()
         n = store.get_value(store.get_iter(path), 0)
         self.control.select_word(mode, n)
 
     def across_update(self, an):
-        if self.tree_paths.has_key(ACROSS):
+        if ACROSS in self.tree_paths:
             selection = self.trees[ACROSS].get_selection()
             selection.select_path(self.tree_paths[ACROSS][an])
             self.trees[ACROSS].scroll_to_cell(self.tree_paths[ACROSS][an])
 
     def down_update(self, dn):
-        if self.tree_paths.has_key(DOWN):
+        if DOWN in self.tree_paths:
             selection = self.trees[DOWN].get_selection()
             selection.select_path(self.tree_paths[DOWN][dn])
             self.trees[DOWN].scroll_to_cell(self.tree_paths[DOWN][dn])
@@ -2484,12 +2580,13 @@ class PuzzleWindow:
             total = int(self.clock_time)
         s = time_str(total)
         sold = self.clock_button.get_label()
-        if sold <> s:
+        if sold != s:
             self.clock_button.set_label(s)
 
         return True
 
     def toolbar_event(self, widget, event):
+        # pylint: disable=unused-argument
         if event == 'Quit':
             self.exit()
         elif event == 'Check Word':
@@ -2507,13 +2604,15 @@ class PuzzleWindow:
                 self.clock_time += (time.time() - self.clock_start)
 
     def button_event(self, widget, event, puzzle):
+        # pylint: disable=unused-argument
         if event.type is gtk.gdk.BUTTON_PRESS:
             (x, y) = puzzle.translate_position(event.x, event.y)
-            if event.button is 3:
+            if event.button == 3:
                 self.control.switch_mode()
             self.control.move_to(x, y)
 
     def key_event(self, item, event):
+        # pylint: disable=unused-argument
         name = gtk.gdk.keyval_name(event.keyval)
 
         c = self.control
@@ -2538,13 +2637,13 @@ class PuzzleWindow:
         return True
 
     def puzzle_key_event(self, item, event):
+        # pylint: disable=unused-argument
         name = gtk.gdk.keyval_name(event.keyval)
         c = self.control
         if len(name) is 1 and name.isalpha():
             c.input_char(self.skip_filled, name)
             return True
-        else:
-            return False
+        return False
 
     def puzzle_finished(self):
         self.notify('You have solved the puzzle!')
@@ -2564,7 +2663,7 @@ class PuzzleWindow:
             self.do_open_file(open_dlg.get_filename())
             open_dlg.destroy()
 
-        if gtk.pygtk_version < (2,3,90):
+        if gtk.pygtk_version < (2, 3, 90):
             dlg = gtk.FileSelection('Select a puzzle')
             dlg.connect('destroy', lambda w: dlg.destroy())
             dlg.ok_button.connect('clicked', open_cb, dlg)
@@ -2593,7 +2692,7 @@ class PuzzleWindow:
             self.do_save_file(save_dlg.get_filename())
             save_dlg.destroy()
 
-        if gtk.pygtk_version < (2,3,90):
+        if gtk.pygtk_version < (2, 3, 90):
             dlg = gtk.FileSelection('Name the puzzle')
             dlg.connect('destroy', lambda w: dlg.destroy())
             dlg.ok_button.connect('clicked', save_cb, dlg)
@@ -2618,7 +2717,7 @@ class PuzzleWindow:
                 dlg.destroy()
 
     def print_puzzle(self):
-        if has_print:
+        if HAS_PRINT:
             pr = PuzzlePrinter(self.puzzle)
             pr.print_puzzle(self.win)
         else:
@@ -2626,6 +2725,7 @@ class PuzzleWindow:
                         + ' install the Python wrapper for gnomeprint.')
 
     def read_config(self):
+        # pylint: disable=eval-used
         c = ConfigParser.ConfigParser()
         c.read(os.path.expanduser('~/.crossword.cfg'))
         if c.has_section('options'):
@@ -2651,13 +2751,17 @@ class PuzzleWindow:
         c.set('options', 'window_size', repr(self.window_size))
         c.set('options', 'maximized', repr(self.maximized))
         c.set('options', 'default_loc', repr(self.default_loc))
-        c.write(file(os.path.expanduser('~/.crossword.cfg'), 'w'))
+        c.write(open(os.path.expanduser('~/.crossword.cfg'), 'w'))
+
+
+def main():
+    if len(sys.argv) != 2:
+        puzzle = None
+    else:
+        puzzle = Puzzle(sys.argv[1])
+
+    window = PuzzleWindow(puzzle)
+    gtk.main()
 
 if __name__ == '__main__':
-    if len(sys.argv) <> 2:
-        p = None
-    else:
-        p = Puzzle(sys.argv[1])
-
-    w = PuzzleWindow(p)
-    gtk.main()
+    main()
